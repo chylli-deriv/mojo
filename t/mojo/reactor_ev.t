@@ -3,9 +3,8 @@ use Mojo::Base -strict;
 use Test::More;
 
 plan skip_all => 'set TEST_EV to enable this test (developer only!)'
-  unless $ENV{TEST_EV} || $ENV{TEST_ALL};
-plan skip_all => 'EV 4.0+ required for this test!'
-  unless eval { require EV; EV->VERSION('4.0'); 1 };
+  unless $ENV{TEST_EV};
+plan skip_all => 'EV 4.0+ required for this test!' unless eval 'use EV 4.0; 1';
 
 use IO::Socket::INET;
 
@@ -32,7 +31,7 @@ ok time < ($time + 10), 'stopped automatically';
 
 # Listen
 my $listen = IO::Socket::INET->new(Listen => 5, LocalAddr => '127.0.0.1');
-my $port   = $listen->sockport;
+my $port = $listen->sockport;
 my ($readable, $writable);
 $reactor->io($listen => sub { pop() ? $writable++ : $readable++ })
   ->watch($listen, 0, 0)->watch($listen, 1, 1);
@@ -238,12 +237,6 @@ $reactor->timer(0 => sub { die "works!\n" });
 $reactor->start;
 like $err, qr/works!/, 'right error';
 
-# Reset events
-$reactor->on(error => sub { });
-ok $reactor->has_subscribers('error'), 'has subscribers';
-$reactor->reset;
-ok !$reactor->has_subscribers('error'), 'no subscribers';
-
 # Recursion
 $timer   = undef;
 $reactor = $reactor->new;
@@ -254,7 +247,19 @@ is $timer, 1, 'timer was triggered once';
 # Detection
 is(Mojo::Reactor->detect, 'Mojo::Reactor::EV', 'right class');
 
-# Reactor in control
+# Dummy reactor
+package Mojo::Reactor::Test;
+use Mojo::Base 'Mojo::Reactor::Poll';
+
+package main;
+
+# Detection (env)
+{
+  local $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Test';
+  is(Mojo::Reactor->detect, 'Mojo::Reactor::Test', 'right class');
+}
+
+# EV in control
 is ref Mojo::IOLoop->singleton->reactor, 'Mojo::Reactor::EV', 'right object';
 ok !Mojo::IOLoop->is_running, 'loop is not running';
 my ($buffer, $server_err, $server_running, $client_err, $client_running);
@@ -276,7 +281,7 @@ Mojo::IOLoop->client(
         my ($stream, $chunk) = @_;
         $buffer .= $chunk;
         return unless $buffer eq 'test321';
-        Mojo::IOLoop->singleton->reactor->stop;
+        EV::break(EV::BREAK_ALL());
       }
     );
     $client_running = Mojo::IOLoop->is_running;
@@ -284,7 +289,7 @@ Mojo::IOLoop->client(
     $client_err = $@;
   }
 );
-Mojo::IOLoop->singleton->reactor->start;
+EV::run();
 ok !Mojo::IOLoop->is_running, 'loop is not running';
 like $server_err, qr/^Mojo::IOLoop already running/, 'right error';
 like $client_err, qr/^Mojo::IOLoop already running/, 'right error';

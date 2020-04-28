@@ -29,7 +29,7 @@ sub startup {
 }
 
 package SingleFileTestApp::Redispatch;
-use Mojo::Base 'Mojolicious';
+use Mojo::Base 'Mojo';
 
 sub handler {
   my ($self, $c) = @_;

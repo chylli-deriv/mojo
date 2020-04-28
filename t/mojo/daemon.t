@@ -6,8 +6,9 @@ BEGIN {
 }
 
 use Test::More;
-use IO::Socket::INET;
-use Mojo::File qw(curfile path);
+use FindBin;
+use Mojo;
+use Mojo::File 'path';
 use Mojo::IOLoop;
 use Mojo::Log;
 use Mojo::Server::Daemon;
@@ -15,7 +16,7 @@ use Mojo::UserAgent;
 use Mojolicious;
 
 package TestApp;
-use Mojo::Base 'Mojolicious';
+use Mojo::Base 'Mojo';
 
 sub handler {
   my ($self, $tx) = @_;
@@ -30,7 +31,7 @@ package main;
 my $ua = Mojo::UserAgent->new;
 $ua->server->app(TestApp->new);
 my $tx = $ua->get('/');
-is $tx->res->code, 200,              'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello TestApp!', 'right content';
 
 # Timeout
@@ -64,8 +65,12 @@ is $tx->res->body, 'Hello TestApp!', 'right content';
   ok !!Mojo::Server::Daemon->new->reverse_proxy, 'reverse proxy';
 }
 
+# Optional home detection
+my @path = qw(th is mojo dir wil l never-ever exist);
+my $app = Mojo->new(home => Mojo::Home->new(@path));
+is $app->home, path(@path), 'right home directory';
+
 # Config
-my $app = Mojolicious->new;
 is $app->config('foo'), undef, 'no value';
 is_deeply $app->config(foo => 'bar')->config, {foo => 'bar'}, 'right value';
 is $app->config('foo'), 'bar', 'right value';
@@ -78,14 +83,14 @@ is_deeply $app->config, {foo => 'bar', baz => 'yada', test => 23},
 
 # Loading
 my $daemon = Mojo::Server::Daemon->new;
-my $path   = curfile->sibling('lib', '..', 'lib', 'myapp.pl');
+my $path   = "$FindBin::Bin/lib/../lib/myapp.pl";
 is ref $daemon->load_app($path), 'Mojolicious::Lite', 'right reference';
 is $daemon->app->config('script'), path($path)->to_abs, 'right script name';
 is ref $daemon->build_app('TestApp'), 'TestApp', 'right reference';
 is ref $daemon->app, 'TestApp', 'right reference';
 
 # Load broken app
-my $bin = curfile->dirname;
+my $bin = $FindBin::Bin;
 eval { Mojo::Server::Daemon->new->load_app("$bin/lib/Mojo/LoaderTest/A.pm"); };
 like $@, qr/did not return an application object/, 'right error';
 eval {
@@ -107,7 +112,7 @@ isa_ok $app->build_tx, 'Mojo::Transaction::HTTP', 'right transaction';
 
 # Fresh application
 $app = Mojolicious->new;
-$ua  = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton);
+$ua = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton);
 is $ua->server->app($app)->app->moniker, 'mojolicious', 'right moniker';
 
 # Silence
@@ -115,38 +120,31 @@ $app->log->level('fatal');
 
 $app->routes->post(
   '/chunked' => sub {
-    my $c = shift;
+    my $self = shift;
 
-    my $params = $c->req->params->to_hash;
+    my $params = $self->req->params->to_hash;
     my @chunks;
     for my $key (sort keys %$params) { push @chunks, $params->{$key} }
 
     my $cb;
     $cb = sub {
-      my $c = shift;
+      my $self = shift;
       $cb = undef unless my $chunk = shift @chunks || '';
-      $c->write_chunk($chunk, $cb);
+      $self->write_chunk($chunk, $cb);
     };
-    $c->$cb;
+    $self->$cb;
   }
 );
 
 my ($local_address, $local_port, $remote_address, $remote_port);
 $app->routes->post(
   '/upload' => sub {
-    my $c = shift;
-    $local_address  = $c->tx->local_address;
-    $local_port     = $c->tx->local_port;
-    $remote_address = $c->tx->remote_address;
-    $remote_port    = $c->tx->remote_port;
-    $c->render(data => $c->req->upload('file')->slurp);
-  }
-);
-
-$app->routes->any(
-  '/port' => sub {
-    my $c = shift;
-    $c->render(text => $c->req->url->to_abs->port);
+    my $self = shift;
+    $local_address  = $self->tx->local_address;
+    $local_port     = $self->tx->local_port;
+    $remote_address = $self->tx->remote_address;
+    $remote_port    = $self->tx->remote_port;
+    $self->render(data => $self->req->upload('file')->slurp);
   }
 );
 
@@ -239,7 +237,7 @@ ok $remote_port > 0, 'has remote port';
 $daemon
   = Mojo::Server::Daemon->new({listen => ['http://127.0.0.1'], silent => 1});
 my $port = $daemon->start->ports->[0];
-is $daemon->app->moniker, 'mojo-hello_world', 'right moniker';
+is $daemon->app->moniker, 'HelloWorld', 'right moniker';
 my $buffer = '';
 my $id;
 $id = Mojo::IOLoop->client(
@@ -296,10 +294,12 @@ my @accepting;
 $acceptor->on(
   accept => sub {
     my $acceptor = shift;
-    $loop->next_tick(sub {
-      push @accepting, $acceptor->is_accepting;
-      shift->stop if @accepting == 2;
-    });
+    $loop->next_tick(
+      sub {
+        push @accepting, $acceptor->is_accepting;
+        shift->stop if @accepting == 2;
+      }
+    );
   }
 );
 $loop->client({port => $acceptor->port} => sub { }) for 1 .. 2;
@@ -324,20 +324,6 @@ $tx = $ua->get("http://127.0.0.1:$port/keep_alive/1");
 ok !$tx->keep_alive, 'will not be kept alive';
 is $tx->res->code, 200,         'right status';
 is $tx->res->body, 'Whatever!', 'right content';
-
-# File descriptor
-my $listen = IO::Socket::INET->new(Listen => 5, LocalAddr => '127.0.0.1');
-my $fd     = fileno $listen;
-$daemon = Mojo::Server::Daemon->new(
-  app    => $app,
-  listen => ["http://127.0.0.1?fd=$fd"],
-  silent => 1
-)->start;
-$port = $listen->sockport;
-is $daemon->ports->[0], $port, 'same port';
-$tx = $ua->get("http://127.0.0.1:$port/port");
-is $tx->res->code, 200, 'right status';
-is $tx->res->body, $port, 'right content';
 
 # No TLS support
 eval {

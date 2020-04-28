@@ -2,11 +2,11 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
-use Mojo::ByteStream qw(b);
-use Mojo::JSON qw(encode_json);
+use Mojo::ByteStream 'b';
+use Mojo::JSON 'encode_json';
 use Mojolicious::Lite;
+use Test::Mojo;
 
 websocket '/echo' => sub {
   my $c = shift;
@@ -50,7 +50,7 @@ websocket '/json' => sub {
 get '/plain' => {text => 'Nothing to see here!'};
 
 websocket '/push' => sub {
-  my $c  = shift;
+  my $c = shift;
   my $id = Mojo::IOLoop->recurring(0.1 => sub { $c->send('push') });
   $c->on(finish => sub { Mojo::IOLoop->remove($id) });
 };
@@ -100,7 +100,7 @@ websocket '/one_sided' => sub {
 under '/nested';
 
 websocket sub {
-  my $c    = shift;
+  my $c = shift;
   my $echo = $c->cookie('echo') // '';
   $c->cookie(echo => 'again');
   $c->on(

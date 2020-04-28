@@ -4,15 +4,15 @@ use Mojo::Base 'Mojo::Content';
 use Mojo::Asset::Memory;
 use Mojo::Content::MultiPart;
 
-has asset        => sub { Mojo::Asset::Memory->new(auto_upgrade => 1) };
+has asset => sub { Mojo::Asset::Memory->new(auto_upgrade => 1) };
 has auto_upgrade => 1;
 
 sub body_contains { shift->asset->contains(shift) >= 0 }
 
 sub body_size {
   my $self = shift;
-  return ($self->headers->content_length || 0) if $self->is_dynamic;
-  return $self->{body_size} //= $self->asset->size;
+  return ($self->headers->content_length || 0) if $self->{dynamic};
+  return $self->asset->size;
 }
 
 sub clone {
@@ -23,7 +23,7 @@ sub clone {
 
 sub get_body_chunk {
   my ($self, $offset) = @_;
-  return $self->generate_body_chunk($offset) if $self->is_dynamic;
+  return $self->generate_body_chunk($offset) if $self->{dynamic};
   return $self->asset->get_chunk($offset);
 }
 
@@ -135,8 +135,7 @@ Content size in bytes.
 
   my $clone = $single->clone;
 
-Return a new L<Mojo::Content::Single> object cloned from this content if
-possible, otherwise return C<undef>.
+Clone content if possible, otherwise return C<undef>.
 
 =head2 get_body_chunk
 
@@ -152,8 +151,8 @@ dynamically.
   my $single = Mojo::Content::Single->new(asset => Mojo::Asset::File->new);
   my $single = Mojo::Content::Single->new({asset => Mojo::Asset::File->new});
 
-Construct a new L<Mojo::Content::Single> object and subscribe to event
-L<Mojo::Content/"read"> with default content parser.
+Construct a new L<Mojo::Content::Single> object and subscribe to L</"read">
+event with default content parser.
 
 =head2 parse
 
@@ -166,6 +165,6 @@ necessary.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -1,34 +1,40 @@
-package Mojolicious::Command::Author::generate::app;
+package Mojolicious::Command::generate::app;
 use Mojo::Base 'Mojolicious::Command';
 
-use Mojo::Util qw(class_to_file class_to_path decamelize);
+use Mojo::Util qw(class_to_file class_to_path);
 
 has description => 'Generate Mojolicious application directory structure';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
-  my ($self, $class) = (shift, shift || 'MyApp');
+  my ($self, $class) = @_;
+  $class ||= 'MyApp';
+
+  # Prevent bad applications
+  die <<EOF unless $class =~ /^[A-Z](?:\w|::)+$/;
+Your application name has to be a well formed (CamelCase) Perl module name
+like "MyApp".
+EOF
 
   # Script
   my $name = class_to_file $class;
-  $self->render_to_rel_file('mojo', "$name/script/$name", {class => $class});
+  $self->render_to_rel_file('mojo', "$name/script/$name", $class);
   $self->chmod_rel_file("$name/script/$name", 0744);
 
   # Application class
   my $app = class_to_path $class;
-  $self->render_to_rel_file('appclass', "$name/lib/$app", {class => $class});
+  $self->render_to_rel_file('appclass', "$name/lib/$app", $class);
 
-  # Config file (using the default moniker)
-  $self->render_to_rel_file('config', "$name/@{[decamelize $class]}.conf");
+  # Config file
+  $self->render_to_rel_file('config', "$name/$name.conf");
 
   # Controller
   my $controller = "${class}::Controller::Example";
   my $path       = class_to_path $controller;
-  $self->render_to_rel_file('controller', "$name/lib/$path",
-    {class => $controller});
+  $self->render_to_rel_file('controller', "$name/lib/$path", $controller);
 
   # Test
-  $self->render_to_rel_file('test', "$name/t/basic.t", {class => $class});
+  $self->render_to_rel_file('test', "$name/t/basic.t", $class);
 
   # Static file
   $self->render_to_rel_file('static', "$name/public/index.html");
@@ -46,7 +52,7 @@ sub run {
 
 =head1 NAME
 
-Mojolicious::Command::Author::generate::app - App generator command
+Mojolicious::Command::generate::app - App generator command
 
 =head1 SYNOPSIS
 
@@ -60,7 +66,7 @@ Mojolicious::Command::Author::generate::app - App generator command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::generate::app> generates application directory
+L<Mojolicious::Command::generate::app> generates application directory
 structures for fully functional L<Mojolicious> applications.
 
 This is a core command, that means it is always enabled and its code a good
@@ -71,7 +77,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::generate::app> inherits all attributes from
+L<Mojolicious::Command::generate::app> inherits all attributes from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 description
@@ -79,18 +85,18 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $app->description;
   $app            = $app->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $app->usage;
   $app      = $app->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::generate::app> inherits all methods from
+L<Mojolicious::Command::generate::app> inherits all methods from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
@@ -101,26 +107,28 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut
 
 __DATA__
 
 @@ mojo
+% my $class = shift;
 #!/usr/bin/env perl
 
 use strict;
 use warnings;
 
-use Mojo::File qw(curfile);
-use lib curfile->dirname->sibling('lib')->to_string;
+use FindBin;
+BEGIN { unshift @INC, "$FindBin::Bin/../lib" }
 use Mojolicious::Commands;
 
 # Start command line interface for application
 Mojolicious::Commands->start_app('<%= $class %>');
 
 @@ appclass
+% my $class = shift;
 package <%= $class %>;
 use Mojo::Base 'Mojolicious';
 
@@ -128,11 +136,11 @@ use Mojo::Base 'Mojolicious';
 sub startup {
   my $self = shift;
 
-  # Load configuration from hash returned by config file
+  # Load configuration from hash returned by "my_app.conf"
   my $config = $self->plugin('Config');
 
-  # Configure the application
-  $self->secrets($config->{secrets});
+  # Documentation browser under "/perldoc"
+  $self->plugin('PODRenderer') if $config->{perldoc};
 
   # Router
   my $r = $self->routes;
@@ -144,6 +152,7 @@ sub startup {
 1;
 
 @@ controller
+% my $class = shift;
 package <%= $class %>;
 use Mojo::Base 'Mojolicious::Controller';
 
@@ -171,6 +180,7 @@ sub welcome {
 </html>
 
 @@ test
+% my $class = shift;
 use Mojo::Base -strict;
 
 use Test::More;
@@ -197,10 +207,15 @@ done_testing();
   and the layout "templates/layouts/default.html.ep",
   <%%= link_to 'click here' => url_for %> to reload the page or
   <%%= link_to 'here' => '/index.html' %> to move forward to a static page.
+  %% if (config 'perldoc') {
+    To learn more, you can also browse through the documentation
+    <%%= link_to 'here' => '/perldoc' %>.
+  %% }
 </p>
 
 @@ config
 % use Mojo::Util qw(sha1_sum steady_time);
 {
+  perldoc => 1,
   secrets => ['<%= sha1_sum $$ . steady_time . rand  %>']
 }

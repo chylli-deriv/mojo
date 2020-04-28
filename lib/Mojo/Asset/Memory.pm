@@ -2,11 +2,11 @@ package Mojo::Asset::Memory;
 use Mojo::Base 'Mojo::Asset';
 
 use Mojo::Asset::File;
-use Mojo::File qw(path);
+use Mojo::File 'path';
 
 has 'auto_upgrade';
 has max_memory_size => sub { $ENV{MOJO_MAX_MEMORY_SIZE} || 262144 };
-has mtime           => sub {$^T};
+has mtime => sub {$^T};
 
 sub add_chunk {
   my ($self, $chunk) = @_;
@@ -14,15 +14,15 @@ sub add_chunk {
   # Upgrade if necessary
   $self->{content} .= $chunk;
   return $self if !$self->auto_upgrade || $self->size <= $self->max_memory_size;
-  $self->emit(upgrade => my $file = $self->to_file);
-  return $file;
+  my $file = Mojo::Asset::File->new;
+  return $file->add_chunk($self->emit(upgrade => $file)->slurp);
 }
 
 sub contains {
   my ($self, $str) = @_;
 
   my $start = $self->start_range;
-  my $pos   = index $self->{content} // '', $str, $start;
+  my $pos = index $self->{content} // '', $str, $start;
   $pos -= $start if $start && $pos >= 0;
   my $end = $self->end_range;
 
@@ -46,8 +46,6 @@ sub move_to { path($_[1])->spurt($_[0]{content} // '') and return $_[0] }
 sub size { length(shift->{content} // '') }
 
 sub slurp { shift->{content} // '' }
-
-sub to_file { Mojo::Asset::File->new->add_chunk(shift->slurp) }
 
 1;
 
@@ -108,7 +106,7 @@ automatically upgrade to a L<Mojo::Asset::File> object.
 
 Maximum size in bytes of data to keep in memory before automatically upgrading
 to a L<Mojo::Asset::File> object, defaults to the value of the
-C<MOJO_MAX_MEMORY_SIZE> environment variable or C<262144> (256KiB).
+C<MOJO_MAX_MEMORY_SIZE> environment variable or C<262144> (256KB).
 
 =head2 mtime
 
@@ -141,7 +139,7 @@ Check if asset contains a specific string.
   my $bytes = $mem->get_chunk($offset, $max);
 
 Get chunk of data starting from a specific position, defaults to a maximum
-chunk size of C<131072> bytes (128KiB).
+chunk size of C<131072> bytes (128KB).
 
 =head2 move_to
 
@@ -161,14 +159,8 @@ Size of asset data in bytes.
 
 Read all asset data at once.
 
-=head2 to_file
-
-  my $file = $mem->to_file;
-
-Convert asset to L<Mojo::Asset::File> object.
-
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

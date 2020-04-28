@@ -1,4 +1,4 @@
-package Mojolicious::Command::Author::generate;
+package Mojolicious::Command::generate;
 use Mojo::Base 'Mojolicious::Commands';
 
 has description => 'Generate files and directories from templates';
@@ -8,7 +8,7 @@ See 'APPLICATION generate help GENERATOR' for more information on a specific
 generator.
 EOF
 has message    => sub { shift->extract_usage . "\nGenerators:\n" };
-has namespaces => sub { ['Mojolicious::Command::Author::generate'] };
+has namespaces => sub { ['Mojolicious::Command::generate'] };
 
 sub help { shift->run(@_) }
 
@@ -18,7 +18,7 @@ sub help { shift->run(@_) }
 
 =head1 NAME
 
-Mojolicious::Command::Author::generate - Generator command
+Mojolicious::Command::generate - Generator command
 
 =head1 SYNOPSIS
 
@@ -29,7 +29,7 @@ Mojolicious::Command::Author::generate - Generator command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::generate> lists available generators.
+L<Mojolicious::Command::generate> lists available generators.
 
 This is a core command, that means it is always enabled and its code a good
 example for learning to build new commands, you're welcome to fork it.
@@ -39,7 +39,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::generate> inherits all attributes from
+L<Mojolicious::Command::generate> inherits all attributes from
 L<Mojolicious::Commands> and implements the following new ones.
 
 =head2 description
@@ -47,7 +47,7 @@ L<Mojolicious::Commands> and implements the following new ones.
   my $description = $generator->description;
   $generator      = $generator->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 hint
 
@@ -69,11 +69,11 @@ Short usage message shown before listing available generator commands.
   $generator     = $generator->namespaces(['MyApp::Command::generate']);
 
 Namespaces to search for available generator commands, defaults to
-L<Mojolicious::Command::Author::generate>.
+L<Mojolicious::Command::generate>.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::generate> inherits all methods from
+L<Mojolicious::Command::generate> inherits all methods from
 L<Mojolicious::Commands> and implements the following new ones.
 
 =head2 help
@@ -84,6 +84,6 @@ Print usage information for generator command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

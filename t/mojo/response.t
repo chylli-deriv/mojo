@@ -1,13 +1,13 @@
 use Mojo::Base -strict;
 
 use Test::More;
+use IO::Compress::Gzip 'gzip';
 use Mojo::Asset::File;
 use Mojo::Content::Single;
 use Mojo::Content::MultiPart;
-use Mojo::File qw(tempdir);
-use Mojo::JSON qw(encode_json);
+use Mojo::JSON 'encode_json';
 use Mojo::Message::Response;
-use Mojo::Util qw(encode gzip);
+use Mojo::Util 'encode';
 
 # Defaults
 my $res = Mojo::Message::Response->new;
@@ -18,7 +18,6 @@ $res = Mojo::Message::Response->new;
 is $res->code(100)->default_message, 'Continue',            'right message';
 is $res->code(101)->default_message, 'Switching Protocols', 'right message';
 is $res->code(102)->default_message, 'Processing',          'right message';
-is $res->code(103)->default_message, 'Early Hints',         'right message';
 is $res->code(200)->default_message, 'OK',                  'right message';
 is $res->code(201)->default_message, 'Created',             'right message';
 is $res->code(202)->default_message, 'Accepted',            'right message';
@@ -60,11 +59,10 @@ is $res->code(416)->default_message, 'Request Range Not Satisfiable',
   'right message';
 is $res->code(417)->default_message, 'Expectation Failed',    'right message';
 is $res->code(418)->default_message, "I'm a teapot",          'right message';
-is $res->code(421)->default_message, 'Misdirected Request',   'right message';
 is $res->code(422)->default_message, 'Unprocessable Entity',  'right message';
 is $res->code(423)->default_message, 'Locked',                'right message';
 is $res->code(424)->default_message, 'Failed Dependency',     'right message';
-is $res->code(425)->default_message, 'Too Early',             'right message';
+is $res->code(425)->default_message, 'Unordered Colection',   'right message';
 is $res->code(426)->default_message, 'Upgrade Required',      'right message';
 is $res->code(428)->default_message, 'Precondition Required', 'right message';
 is $res->code(429)->default_message, 'Too Many Requests',     'right message';
@@ -131,10 +129,10 @@ is $res->code(1)->default_message, '', 'empty default message';
 # Parse HTTP 1.1 response start-line, no headers and body
 $res = Mojo::Message::Response->new;
 $res->parse("HTTP/1.1 200 OK\x0d\x0a\x0d\x0a");
-ok !$res->is_finished, 'response is not finished';
-is $res->code,    200,   'right status';
-is $res->message, 'OK',  'right message';
-is $res->version, '1.1', 'right version';
+ok $res->is_finished, 'response is finished';
+is $res->code,        200, 'right status';
+is $res->message,     'OK', 'right message';
+is $res->version,     '1.1', 'right version';
 
 # Parse HTTP 1.1 response start-line, no headers and body (small chunks)
 $res = Mojo::Message::Response->new;
@@ -175,18 +173,18 @@ ok !$res->is_finished, 'response is not finished';
 $res->parse("\x0d");
 ok !$res->is_finished, 'response is not finished';
 $res->parse("\x0a");
-ok !$res->is_finished, 'response is not finished';
-is $res->code,    200,   'right status';
-is $res->message, 'OK',  'right message';
-is $res->version, '1.1', 'right version';
+ok $res->is_finished, 'response is finished';
+is $res->code,        200, 'right status';
+is $res->message,     'OK', 'right message';
+is $res->version,     '1.1', 'right version';
 
 # Parse HTTP 1.1 response start-line, no headers and body (no message)
 $res = Mojo::Message::Response->new;
 $res->parse("HTTP/1.1 200\x0d\x0a\x0d\x0a");
-ok !$res->is_finished, 'response is not finished';
-is $res->code,    200,   'right status';
-is $res->message, undef, 'no message';
-is $res->version, '1.1', 'right version';
+ok $res->is_finished, 'response is finished';
+is $res->code,        200, 'right status';
+is $res->message,     undef, 'no message';
+is $res->version,     '1.1', 'right version';
 
 # Parse HTTP 1.0 response start-line and headers but no body
 $res = Mojo::Message::Response->new;
@@ -494,10 +492,6 @@ ok !$res->content->parts->[1]->is_multipart, 'no multipart content';
 ok !$res->content->parts->[2]->is_multipart, 'no multipart content';
 is $res->content->parts->[0]->asset->slurp, "hallo welt test123\n",
   'right content';
-my $dir  = tempdir;
-my $file = $dir->child('multipart.html');
-eval { $res->save_to($file) };
-like $@, qr/^Multipart content cannot be saved to files/, 'right error';
 
 # Parse HTTP 1.1 chunked multipart response with leftovers (at once)
 $res = Mojo::Message::Response->new;
@@ -627,7 +621,7 @@ like $res->content->asset->slurp, qr/hallo welt/, 'right content';
 
 # Parse HTTP 1.1 gzip compressed response
 my $uncompressed = 'abc' x 1000;
-my $compressed   = gzip $uncompressed;
+gzip \$uncompressed, \my $compressed;
 $res = Mojo::Message::Response->new;
 $res->parse("HTTP/1.1 200 OK\x0d\x0a");
 $res->parse("Content-Type: text/plain\x0d\x0a");
@@ -654,8 +648,8 @@ is $res->body, $uncompressed, 'right content';
 # Parse HTTP 1.1 chunked gzip compressed response
 $uncompressed = 'abc' x 1000;
 $compressed   = undef;
-$compressed   = gzip $uncompressed;
-$res          = Mojo::Message::Response->new;
+gzip \$uncompressed, \$compressed;
+$res = Mojo::Message::Response->new;
 $res->parse("HTTP/1.1 200 OK\x0d\x0a");
 $res->parse("Content-Type: text/plain\x0d\x0a");
 $res->parse("Content-Encoding: gzip\x0d\x0a");
@@ -860,7 +854,6 @@ is $res->headers->sec_websocket_accept, 'abcdef=',
 is $res->headers->sec_websocket_protocol, 'sample',
   'right "Sec-WebSocket-Protocol" value';
 is $res->body, '', 'no content';
-ok !defined $res->headers->content_length, '"Content-Length" does not exist';
 
 # Parse WebSocket handshake response (with frame)
 $res = Mojo::Message::Response->new;
@@ -885,7 +878,6 @@ is $res->headers->sec_websocket_protocol, 'sample',
 is $res->body, '', 'no content';
 is $res->content->leftovers, "\x81\x08\x77\x68\x61\x74\x65\x76\x65\x72",
   'frame in leftovers';
-ok !defined $res->headers->content_length, '"Content-Length" does not exist';
 
 # Build WebSocket handshake response
 $res = Mojo::Message::Response->new;
@@ -902,14 +894,13 @@ is $res->message,     'Switching Protocols', 'right message';
 is $res->version,     '1.1', 'right version';
 is $res->headers->connection, 'Upgrade', 'right "Connection" value';
 is $res->headers->date, 'Sun, 17 Aug 2008 16:27:35 GMT', 'right "Date" value';
-ok !defined $res->headers->content_length, '"Content-Length" does not exist';
-is $res->headers->upgrade, 'websocket', 'right "Upgrade" value';
+is $res->headers->content_length, 0,           'right "Content-Length" value';
+is $res->headers->upgrade,        'websocket', 'right "Upgrade" value';
 is $res->headers->sec_websocket_accept, 'abcdef=',
   'right "Sec-WebSocket-Accept" value';
 is $res->headers->sec_websocket_protocol, 'sample',
   'right "Sec-WebSocket-Protocol" value';
 is $res->body, '', 'no content';
-ok !defined $res->headers->content_length, '"Content-Length" does not exist';
 
 # Build and parse HTTP 1.1 response with 3 cookies
 $res = Mojo::Message::Response->new;
@@ -982,7 +973,6 @@ $res->content->write('' => $cb);
 my $full   = '';
 my $count  = 0;
 my $offset = 0;
-
 while (1) {
   my $chunk = $res->get_body_chunk($offset);
   last unless $chunk;
@@ -1005,7 +995,6 @@ $res->fix_headers;
 $full   = '';
 $count  = 0;
 $offset = 0;
-
 while (1) {
   my $chunk = $res->get_body_chunk($offset);
   last unless $chunk;
@@ -1100,11 +1089,6 @@ is_deeply $res->dom('p > a')->map('text')->to_array, [qw(yada yada)],
 is_deeply \@text, [qw(test test)], 'right values';
 is_deeply $res->dom->find('p > a')->map('text')->to_array, [qw(test test)],
   'right values';
-$file = $dir->child('single.html');
-is $res->save_to($file)->body,
-  '<p>foo<a href="/">bar</a><a href="/baz">baz</a></p>', 'right content';
-is $file->slurp, '<p>foo<a href="/">bar</a><a href="/baz">baz</a></p>',
-  'right content';
 
 # Build DOM from response with charset
 $res = Mojo::Message::Response->new;

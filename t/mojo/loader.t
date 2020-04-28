@@ -4,8 +4,8 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Mojo::Loader
   qw(data_section file_is_binary find_packages find_modules load_class);
@@ -24,19 +24,24 @@ ok !!UNIVERSAL::can(B => 'svref_2object'), 'method found';
 my $e = load_class 'Mojo::LoaderException';
 isa_ok $e, 'Mojo::Exception', 'right exception';
 like $e->message, qr/Missing right curly/, 'right message';
-is $e->lines_before->[0][0], 4,             'right number';
-is $e->lines_before->[0][1], '',            'right line';
-is $e->lines_before->[1][0], 5,             'right number';
-is $e->lines_before->[1][1], 'sub new { }', 'right line';
-is $e->lines_before->[2][0], 6,             'right number';
-is $e->lines_before->[2][1], '',            'right line';
-is $e->lines_before->[3][0], 7,             'right number';
-is $e->lines_before->[3][1], 'foo {',       'right line';
-is $e->lines_before->[4][0], 8,             'right number';
-is $e->lines_before->[4][1], '',            'right line';
-is $e->line->[0], 9,    'right number';
+is $e->lines_before->[0][0], 2,                       'right number';
+is $e->lines_before->[0][1], '',                      'right line';
+is $e->lines_before->[1][0], 3,                       'right number';
+is $e->lines_before->[1][1], 'use Mojo::Base -base;', 'right line';
+is $e->lines_before->[2][0], 4,                       'right number';
+is $e->lines_before->[2][1], '',                      'right line';
+is $e->lines_before->[3][0], 5,                       'right number';
+is $e->lines_before->[3][1], 'foo {',                 'right line';
+is $e->lines_before->[4][0], 6,                       'right number';
+is $e->lines_before->[4][1], '',                      'right line';
+is $e->line->[0], 7,    'right number';
 is $e->line->[1], "1;", 'right line';
 like "$e", qr/Missing right curly/, 'right message';
+
+# Exception again
+$e = load_class 'Mojo::LoaderException';
+isa_ok $e, 'Mojo::Exception', 'right exception';
+like $e->message, qr/Attempt to reload/, 'right message';
 
 # Complicated exception
 $e = load_class 'Mojo::LoaderException2';
@@ -48,7 +53,7 @@ is $e->lines_before->[1][0], 2,                                 'right number';
 is $e->lines_before->[1][1], 'use Mojo::Base -strict;',         'right line';
 is $e->lines_before->[2][0], 3,                                 'right number';
 is $e->lines_before->[2][1], '',                                'right line';
-is $e->line->[0], 4,                                          'right number';
+is $e->line->[0], 4, 'right number';
 is $e->line->[1], 'Mojo::LoaderException2_2::throw_error();', 'right line';
 is $e->lines_after->[0][0], 5,    'right number';
 is $e->lines_after->[0][1], '',   'right line';
@@ -149,7 +154,7 @@ is load_class('Mojolicious::Lite'),     undef, 'loaded successfully';
   ok !file_is_binary('Example::Package::DoesNotExist', 'test.bin'),
     'file is not binary';
   ok file_is_binary('Example::Package::Base64', 'test.bin'), 'file is binary';
-  is data_section('Example::Package::Base64', 'test.bin'),   "\xe2\x99\xa5",
+  is data_section('Example::Package::Base64', 'test.bin'), "\xe2\x99\xa5",
     'right template';
   is_deeply [sort keys %{data_section 'Example::Package::Base64'}],
     ['test.bin'], 'right DATA files';

@@ -1,7 +1,7 @@
 package Mojo::Content::MultiPart;
 use Mojo::Base 'Mojo::Content';
 
-use Mojo::Util qw(b64_encode);
+use Mojo::Util 'b64_encode';
 
 has parts => sub { [] };
 
@@ -15,7 +15,7 @@ sub body_contains {
 sub body_size {
   my $self = shift;
 
-  # Check for existing Content-Length header
+  # Check for existing Content-Lenght header
   if (my $len = $self->headers->content_length) { return $len }
 
   # Calculate length of whole body
@@ -41,9 +41,9 @@ sub build_boundary {
 
   # Add boundary to Content-Type header
   my $headers = $self->headers;
-  my ($before, $after) = ('multipart/mixed', '');
-  ($before, $after) = ($1, $2)
-    if ($headers->content_type // '') =~ m!^(.*multipart/[^;]+)(.*)$!;
+  ($headers->content_type // '') =~ m!^(.*multipart/[^;]+)(.*)$!;
+  my $before = $1 || 'multipart/mixed';
+  my $after  = $2 || '';
   $headers->content_type("$before; boundary=$boundary$after");
 
   return $boundary;
@@ -59,22 +59,17 @@ sub get_body_chunk {
   my ($self, $offset) = @_;
 
   # Body generator
-  return $self->generate_body_chunk($offset) if $self->is_dynamic;
+  return $self->generate_body_chunk($offset) if $self->{dynamic};
 
   # First boundary
-  my $boundary     = $self->{boundary} //= $self->build_boundary;
+  my $boundary     = $self->build_boundary;
   my $boundary_len = length($boundary) + 6;
   my $len          = $boundary_len - 2;
   return substr "--$boundary\x0d\x0a", $offset if $len > $offset;
 
-  # Skip parts that have already been processed
-  my $start = 0;
-  ($len, $start) = ($self->{last_len}, $self->{last_part} + 1)
-    if $self->{offset} && $offset > $self->{offset};
-
   # Prepare content part by part
   my $parts = $self->parts;
-  for (my $i = $start; $i < @$parts; $i++) {
+  for (my $i = 0; $i < @$parts; $i++) {
     my $part = $parts->[$i];
 
     # Headers
@@ -97,8 +92,6 @@ sub get_body_chunk {
     return substr "\x0d\x0a--$boundary\x0d\x0a", $offset - $len
       if ($len + $boundary_len) > $offset;
     $len += $boundary_len;
-
-    @{$self}{qw(last_len last_part offset)} = ($len, $i, $offset);
   }
 }
 
@@ -279,8 +272,7 @@ Generate a suitable boundary for content and add it to C<Content-Type> header.
 
   my $clone = $multi->clone;
 
-Return a new L<Mojo::Content::MultiPart> object cloned from this content if
-possible, otherwise return C<undef>.
+Clone content if possible, otherwise return C<undef>.
 
 =head2 get_body_chunk
 
@@ -304,11 +296,11 @@ True, this is a L<Mojo::Content::MultiPart> object.
   my $multi
     = Mojo::Content::MultiPart->new({parts => [Mojo::Content::Single->new]});
 
-Construct a new L<Mojo::Content::MultiPart> object and subscribe to event
-L<Mojo::Content/"read"> with default content parser.
+Construct a new L<Mojo::Content::MultiPart> object and subscribe to L</"read">
+event with default content parser.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -8,6 +8,7 @@ use Mojolicious::Command;
 
 # Application
 my $command = Mojolicious::Command->new;
+isa_ok $command->app, 'Mojo',        'right application';
 isa_ok $command->app, 'Mojolicious', 'right application';
 
 # Creating directories
@@ -33,15 +34,7 @@ chdir $cwd;
 
 # Generating files
 is $command->rel_file('foo/bar.txt')->basename, 'bar.txt', 'right result';
-my $template = <<'EOF';
-@@ foo_bar
-% my $word = shift;
-just <%= $word %>!
-@@ dies
-% die 'template error';
-@@ bar_baz
-just <%= $word %> too!
-EOF
+my $template = "@@ foo_bar\njust <%= 'works' %>!\n";
 open my $data, '<', \$template;
 no strict 'refs';
 *{"Mojolicious::Command::DATA"} = $data;
@@ -50,21 +43,11 @@ $buffer = '';
 {
   open my $handle, '>', \$buffer;
   local *STDOUT = $handle;
-  $command->template({})->render_to_rel_file('foo_bar', 'bar/baz.txt', 'works');
+  $command->render_to_rel_file('foo_bar', 'bar/baz.txt');
 }
 like $buffer, qr/\[mkdir\].*\[write\]/s, 'right output';
 open my $txt, '<', $command->rel_file('bar/baz.txt');
 is join('', <$txt>), "just works!\n", 'right result';
-$buffer = '';
-{
-  open my $handle, '>', \$buffer;
-  local *STDOUT = $handle;
-  $command->template({vars => 1})
-    ->render_to_rel_file('bar_baz', 'bar/two.txt', {word => 'works'});
-}
-like $buffer, qr/\[exist\].*\[write\]/s, 'right output';
-open $txt, '<', $command->rel_file('bar/two.txt');
-is join('', <$txt>), "just works too!\n", 'right result';
 $buffer = '';
 {
   open my $handle, '>', \$buffer;
@@ -89,8 +72,6 @@ $buffer = '';
 like $buffer, qr/\[exist\]/, 'right output';
 open my $xml, '<', $command->rel_file('123.xml');
 is join('', <$xml>), "seems\nto\nwork", 'right result';
-eval { $command->render_data('dies') };
-like $@, qr/template error/, 'right error';
 chdir $cwd;
 
 # Quiet

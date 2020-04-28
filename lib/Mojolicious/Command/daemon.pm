@@ -2,10 +2,10 @@ package Mojolicious::Command::daemon;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Server::Daemon;
-use Mojo::Util qw(getopt);
+use Mojo::Util 'getopt';
 
 has description => 'Start application with HTTP and WebSocket server';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
   my ($self, @args) = @_;
@@ -15,9 +15,9 @@ sub run {
     'b|backlog=i'            => sub { $daemon->backlog($_[1]) },
     'c|clients=i'            => sub { $daemon->max_clients($_[1]) },
     'i|inactivity-timeout=i' => sub { $daemon->inactivity_timeout($_[1]) },
-    'l|listen=s'             => \my @listen,
-    'p|proxy'                => sub { $daemon->reverse_proxy(1) },
-    'r|requests=i'           => sub { $daemon->max_requests($_[1]) };
+    'l|listen=s'   => \my @listen,
+    'p|proxy'      => sub { $daemon->reverse_proxy(1) },
+    'r|requests=i' => sub { $daemon->max_requests($_[1]) };
 
   $daemon->listen(\@listen) if @listen;
   $daemon->run;
@@ -85,14 +85,14 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $daemon->description;
   $daemon         = $daemon->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $daemon->usage;
   $daemon   = $daemon->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
@@ -107,6 +107,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

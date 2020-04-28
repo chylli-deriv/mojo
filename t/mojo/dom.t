@@ -2,7 +2,6 @@ use Mojo::Base -strict;
 
 use Test::More;
 use Mojo::DOM;
-use Mojo::DOM::HTML qw(tag_to_html);
 
 # Empty
 is(Mojo::DOM->new,                     '',    'right result');
@@ -339,7 +338,7 @@ is_deeply \@div, $ids, 'found all div elements';
 is_deeply [$dom->at('p')->ancestors->map('tag')->each],
   [qw(div div div body html)], 'right results';
 is_deeply [$dom->at('html')->ancestors->each], [], 'no results';
-is_deeply [$dom->ancestors->each], [], 'no results';
+is_deeply [$dom->ancestors->each],             [], 'no results';
 
 # Script tag
 $dom = Mojo::DOM->new(<<EOF);
@@ -1113,14 +1112,6 @@ is_deeply \@e, [qw(A C E G I)], 'found all odd elements';
 $dom->find('li:nth-of-type(odd)')->each(sub { push @e, shift->text });
 is_deeply \@e, [qw(A E H)], 'found all odd li elements';
 @e = ();
-$dom->find('ul li:not(:first-child, :last-child)')
-  ->each(sub { push @e, shift->text });
-is_deeply \@e, [qw(C E F H)], 'found all odd li elements';
-@e = ();
-$dom->find('ul li:matches(:first-child, :last-child)')
-  ->each(sub { push @e, shift->text });
-is_deeply \@e, [qw(A I)], 'found all odd li elements';
-@e = ();
 $dom->find('li:nth-last-of-type( odd )')->each(sub { push @e, shift->text });
 is_deeply \@e, [qw(C F I)], 'found all odd li elements';
 @e = ();
@@ -1214,27 +1205,6 @@ is_deeply \@e, ['J'], 'found only child';
 @e = ();
 $dom->find('div div:only-of-type')->each(sub { push @e, shift->text });
 is_deeply \@e, [qw(J K)], 'found only child';
-
-# Links
-$dom = Mojo::DOM->new(<<EOF);
-<a>A</a>
-<a href=/>B</a>
-<link rel=C>
-<link href=/ rel=D>
-<area alt=E>
-<area href=/ alt=F>
-<div href=borked>very borked</div>
-EOF
-is $dom->find(':link')->map(sub { $_->tag })->join(','), 'a,link,area',
-  'right tags';
-is $dom->find(':visited')->map(sub { $_->tag })->join(','), 'a,link,area',
-  'right tags';
-is $dom->at('a:link')->text,    'B', 'right result';
-is $dom->at('a:visited')->text, 'B', 'right result';
-is $dom->at('link:link')->{rel},    'D', 'right result';
-is $dom->at('link:visited')->{rel}, 'D', 'right result';
-is $dom->at('area:link')->{alt},    'F', 'right result';
-is $dom->at('area:visited')->{alt}, 'F', 'right result';
 
 # Sibling combinator
 $dom = Mojo::DOM->new(<<EOF);
@@ -1898,7 +1868,7 @@ $dom = Mojo::DOM->new(<<EOF);
   </body>
 </html>
 EOF
-is $dom->at('html head title')->text,      'Test',              'right text';
+is $dom->at('html head title')->text, 'Test', 'right text';
 is $dom->at('html body font > div')->text, "test1\n      \n  ", 'right text';
 is $dom->at('html body font > div > div')->text, "test2\n    ", 'right text';
 
@@ -2088,17 +2058,21 @@ $dom->parse(<<EOF);
 </c>
 EOF
 my @results;
-$dom->find('b')->each(sub {
-  $_->find('a')->each(sub { push @results, $_->text });
-});
+$dom->find('b')->each(
+  sub {
+    $_->find('a')->each(sub { push @results, $_->text });
+  }
+);
 is_deeply \@results, [qw(bar baz yada)], 'right results';
 @results = ();
 $dom->find('a')->each(sub { push @results, $_->text });
 is_deeply \@results, [qw(foo bar baz yada)], 'right results';
 @results = ();
-$dom->find('b')->each(sub {
-  $_->find('c a')->each(sub { push @results, $_->text });
-});
+$dom->find('b')->each(
+  sub {
+    $_->find('c a')->each(sub { push @results, $_->text });
+  }
+);
 is_deeply \@results, [qw(baz yada)], 'right results';
 is $dom->at('b')->at('a')->text, 'bar', 'right text';
 is $dom->at('c > b > a')->text, 'bar', 'right text';
@@ -2247,18 +2221,11 @@ $dom = Mojo::DOM->new(<<EOF);
     <optgroup>
       <option>H</option>
       <option selected>I</option>
-      <option selected disabled>V</option>
     </optgroup>
     <option value="J" selected>K</option>
-    <optgroup disabled>
-      <option selected>I2</option>
-    </optgroup>
   </select>
   <select name="n"><option>N</option></select>
   <select multiple name="q"><option>Q</option></select>
-  <select name="y" disabled>
-    <option selected>Y</option>
-  </select>
   <select name="d">
     <option selected>R</option>
     <option selected>D</option>
@@ -2276,15 +2243,14 @@ is_deeply $dom->at('select')->val, ['I', 'J'], 'right values';
 is $dom->at('select option')->val,                          'F', 'right value';
 is $dom->at('select optgroup option:not([selected])')->val, 'H', 'right value';
 is $dom->find('select')->[1]->at('option')->val, 'N', 'right value';
-is $dom->find('select')->[1]->val, undef, 'no value';
-is $dom->find('select')->[2]->val, undef, 'no value';
+is $dom->find('select')->[1]->val,        undef, 'no value';
+is_deeply $dom->find('select')->[2]->val, undef, 'no value';
 is $dom->find('select')->[2]->at('option')->val, 'Q', 'right value';
-is $dom->at('select[disabled]')->val, 'Y', 'right value';
-is $dom->find('select')->last->val, 'D', 'right value';
-is $dom->find('select')->last->at('option')->val, 'R', 'right value';
+is_deeply $dom->find('select')->last->val, 'D', 'right value';
+is_deeply $dom->find('select')->last->at('option')->val, 'R', 'right value';
 is $dom->at('textarea')->val, 'M', 'right value';
 is $dom->at('button')->val,   'O', 'right value';
-is $dom->at('form')->find('input')->last->val, 'P', 'right value';
+is $dom->find('form input')->last->val, 'P', 'right value';
 is $dom->at('input[name=q]')->val, 'on',  'right value';
 is $dom->at('input[name=r]')->val, 'on',  'right value';
 is $dom->at('input[name=s]')->val, undef, 'no value';
@@ -2368,8 +2334,6 @@ is $dom->find('a[accesskey~=0]')->[0]->text, 'Zero', 'right text';
 is $dom->find('a[accesskey~=0]')->[1], undef, 'no result';
 is $dom->find('a[accesskey*=0]')->[0]->text, 'Zero', 'right text';
 is $dom->find('a[accesskey*=0]')->[1], undef, 'no result';
-is $dom->find('a[accesskey|=0]')->[0]->text, 'Zero', 'right text';
-is $dom->find('a[accesskey|=0]')->[1], undef, 'no result';
 is $dom->find('a[accesskey=1]')->[0]->text, 'O&gTn>e', 'right text';
 is $dom->find('a[accesskey=1]')->[1], undef, 'no result';
 is $dom->find('a[accesskey^=1]')->[0]->text, 'O&gTn>e', 'right text';
@@ -2380,8 +2344,6 @@ is $dom->find('a[accesskey~=1]')->[0]->text, 'O&gTn>e', 'right text';
 is $dom->find('a[accesskey~=1]')->[1], undef, 'no result';
 is $dom->find('a[accesskey*=1]')->[0]->text, 'O&gTn>e', 'right text';
 is $dom->find('a[accesskey*=1]')->[1], undef, 'no result';
-is $dom->find('a[accesskey|=1]')->[0]->text, 'O&gTn>e', 'right text';
-is $dom->find('a[accesskey|=1]')->[1], undef, 'no result';
 is $dom->at('a[accesskey*="."]'), undef, 'no result';
 
 # Empty attribute value
@@ -2413,7 +2375,6 @@ $dom = Mojo::DOM->new(<<EOF);
 <p class="foo">A</p>
 <p class="foo bAr">B</p>
 <p class="FOO">C</p>
-<p class="foo-bar">D</p>
 EOF
 is $dom->find('.foo')->map('text')->join(','),            'A,B', 'right result';
 is $dom->find('.FOO')->map('text')->join(','),            'C',   'right result';
@@ -2426,17 +2387,12 @@ is $dom->find('[class="foo bar" i]')->map('text')->join(','), 'B',
 is $dom->find('[class~=foo]')->map('text')->join(','), 'A,B', 'right result';
 is $dom->find('[class~=foo i]')->map('text')->join(','), 'A,B,C',
   'right result';
-is $dom->find('[class*=f]')->map('text')->join(','), 'A,B,D', 'right result';
-is $dom->find('[class*=f i]')->map('text')->join(','), 'A,B,C,D',
-  'right result';
-is $dom->find('[class^=F]')->map('text')->join(','), 'C', 'right result';
-is $dom->find('[class^=F i]')->map('text')->join(','), 'A,B,C,D',
-  'right result';
-is $dom->find('[class$=O]')->map('text')->join(','),   'C',   'right result';
-is $dom->find('[class$=O i]')->map('text')->join(','), 'A,C', 'right result';
-is $dom->find('[class|=foo]')->map('text')->join(','), 'A,D', 'right result';
-is $dom->find('[class|=foo i]')->map('text')->join(','), 'A,C,D',
-  'right result';
+is $dom->find('[class*=f]')->map('text')->join(','),   'A,B',   'right result';
+is $dom->find('[class*=f i]')->map('text')->join(','), 'A,B,C', 'right result';
+is $dom->find('[class^=F]')->map('text')->join(','),   'C',     'right result';
+is $dom->find('[class^=F i]')->map('text')->join(','), 'A,B,C', 'right result';
+is $dom->find('[class$=O]')->map('text')->join(','),   'C',     'right result';
+is $dom->find('[class$=O i]')->map('text')->join(','), 'A,C',   'right result';
 
 # Nested description lists
 $dom = Mojo::DOM->new(<<EOF);
@@ -2575,224 +2531,5 @@ my $huge = ('<a>' x 100) . 'works' . ('</a>' x 100);
 $dom = Mojo::DOM->new($huge);
 is $dom->all_text, 'works', 'right text';
 is "$dom", $huge, 'right result';
-
-# Namespace
-$dom = Mojo::DOM->new->xml(1)->parse(<<EOF);
-<tag xmlns:myns="coolns">
-  <this>foo</this>
-  <myns:this>bar</myns:this>
-</tag>
-EOF
-my %ns = (cool => 'coolns');
-is_deeply $dom->find('cool|this', %ns)->map('text'), ['bar'], 'right result';
-is_deeply $dom->find('cool|*',    %ns)->map('text'), ['bar'], 'right result';
-is_deeply $dom->find('|this',     %ns)->map('text'), ['foo'], 'right result';
-is_deeply $dom->find('*|this', %ns)->map('text'), ['foo', 'bar'],
-  'right result';
-ok !$dom->at('foo|*'), 'no result';
-
-# Namespace declaration on the same tag
-$dom = Mojo::DOM->new->xml(1)->parse('<x:tag xmlns:x="ns" foo="bar" />');
-is $dom->at('ns|tag', ns => 'ns')->{foo}, 'bar', 'right result';
-
-# Explicit no namespace
-$dom = Mojo::DOM->new->xml(1)->parse('<foo xmlns=""><bar /></foo>');
-ok $dom->at('|bar'), 'result';
-
-# Nested namespaces
-$dom = Mojo::DOM->new->xml(1)->parse(<<EOF);
-<foo xmlns="ns:foo">
-  <tag val="1" />
-  <bar xmlns="ns:bar">
-    <tag val="2" />
-    <baz />
-    <yada hreflang="en-US">YADA</yada>
-  </bar>
-</foo>
-EOF
-%ns = (foons => 'ns:foo', barns => 'ns:bar');
-ok $dom->at('foons|foo',                   %ns), 'result';
-ok $dom->at('foons|foo:not(barns|*)',      %ns), 'result';
-ok $dom->at('foo:not(|foo)',               %ns), 'result';
-ok $dom->at('foons|foo:root',              %ns), 'result';
-ok $dom->at('foo:matches(:root, foons|*)', %ns), 'result';
-ok !$dom->at('foons|foo:not(:root)', %ns), 'no result';
-is $dom->at('foons|tag',       %ns)->{val}, 1, 'right value';
-is $dom->at('foons|tag:empty', %ns)->{val}, 1, 'right value';
-ok $dom->at('foons|tag[val="1"]',             %ns), 'result';
-ok $dom->at('foons|tag[val="1"]:empty',       %ns), 'result';
-ok $dom->at('foo > foons|tag[val="1"]',       %ns), 'result';
-ok $dom->at('foons|foo > foons|tag[val="1"]', %ns), 'result';
-ok $dom->at('foo foons|tag[val="1"]',         %ns), 'result';
-ok $dom->at('foons|foo foons|tag[val="1"]',   %ns), 'result';
-ok $dom->at('barns|bar',                      %ns), 'result';
-ok $dom->at('barns|bar:not(foons|*)',         %ns), 'result';
-ok $dom->at('bar:not(|bar)',                  %ns), 'result';
-ok $dom->at('bar:matches(barns|*)',           %ns), 'result';
-ok !$dom->at('barns|bar:root', %ns), 'no result';
-ok $dom->at('barns|bar:not(:root)',              %ns), 'result';
-ok $dom->at('bar:matches(barns|*, :not(:root))', %ns), 'result';
-ok $dom->at('foons|foo barns|bar',               %ns), 'result';
-is $dom->at('barns|tag',       %ns)->{val}, 2, 'right value';
-is $dom->at('barns|tag:empty', %ns)->{val}, 2, 'right value';
-ok $dom->at('barns|tag[val="2"]',                           %ns), 'result';
-ok $dom->at('barns|tag[val="2"]:empty',                     %ns), 'result';
-ok $dom->at('bar > barns|tag[val="2"]',                     %ns), 'result';
-ok $dom->at('barns|bar > barns|tag[val="2"]',               %ns), 'result';
-ok $dom->at('bar barns|tag[val="2"]',                       %ns), 'result';
-ok $dom->at('barns|bar barns|tag[val="2"]',                 %ns), 'result';
-ok $dom->at('foons|foo barns|bar baz',                      %ns), 'result';
-ok $dom->at('foons|foo barns|bar barns|baz',                %ns), 'result';
-ok $dom->at('foons|foo barns|bar barns|tag[val="2"] + baz', %ns), 'result';
-ok $dom->at('foons|foo barns|bar barns|tag[val="2"] + barns|baz', %ns),
-  'result';
-ok $dom->at('foons|foo barns|bar barns|tag[val="2"] ~ baz', %ns), 'result';
-ok $dom->at('foons|foo barns|bar barns|tag[val="2"] ~ barns|baz', %ns),
-  'result';
-ok !$dom->at('foons|bar', %ns), 'no result';
-ok !$dom->at('foons|baz', %ns), 'no result';
-ok $dom->at('baz')->matches('barns|*', %ns), 'match';
-is $dom->at('barns|bar [hreflang|=en]',    %ns)->text, 'YADA', 'right text';
-is $dom->at('barns|bar [hreflang|=en-US]', %ns)->text, 'YADA', 'right text';
-ok !$dom->at('barns|bar [hreflang|=en-US-yada]', %ns), 'no result';
-ok !$dom->at('barns|bar [hreflang|=e]',          %ns), 'no result';
-
-# Reusing fragments
-my $fragment = Mojo::DOM->new('<a><b>C</b></a>');
-$dom = Mojo::DOM->new('<div></div>');
-is $fragment, '<a><b>C</b></a>', 'right result';
-$dom->at('div')->append($fragment);
-$dom->at('div')->append($fragment);
-is $dom,      '<div></div><a><b>C</b></a><a><b>C</b></a>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->append_content($fragment);
-$dom->at('div')->append_content($fragment);
-is $dom,      '<div><a><b>C</b></a><a><b>C</b></a></div>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->content($fragment);
-$dom->at('div a')->content($fragment);
-is $dom,      '<div><a><a><b>C</b></a></a></div>', 'right result';
-is $fragment, '<a><b>C</b></a>',                   'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->prepend($fragment);
-$dom->at('div')->prepend($fragment);
-is $dom,      '<a><b>C</b></a><a><b>C</b></a><div></div>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->prepend_content($fragment);
-$dom->at('div')->prepend_content($fragment);
-is $dom,      '<div><a><b>C</b></a><a><b>C</b></a></div>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->replace($fragment);
-$dom->at('b')->replace($fragment);
-is $dom,      '<a><a><b>C</b></a></a>', 'right result';
-is $fragment, '<a><b>C</b></a>',        'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->wrap($fragment);
-$dom->at('b')->wrap($fragment);
-is $dom,      '<a><a><b>C<b>C<div></div></b></b></a></a>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-$dom = Mojo::DOM->new('<div></div>');
-$dom->at('div')->wrap_content($fragment);
-$dom->at('b')->wrap_content($fragment);
-is $dom,      '<div><a><b><a><b>CC</b></a></b></a></div>', 'right result';
-is $fragment, '<a><b>C</b></a>',                           'right result';
-
-# Generate tags
-is(Mojo::DOM->new_tag('br')->to_string,  '<br>',        'right result');
-is(Mojo::DOM->new_tag('div')->to_string, '<div></div>', 'right result');
-is(
-  Mojo::DOM->new_tag('div', id => 'foo', hidden => undef)->to_string,
-  '<div hidden id="foo"></div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new_tag('div', 'safe & content'),
-  '<div>safe &amp; content</div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new_tag('div', id => 'foo', 'safe & content'),
-  '<div id="foo">safe &amp; content</div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new_tag(
-    'div',
-    id   => 'foo',
-    data => {foo => 0, Bar => 'test'},
-    'safe & content'
-  ),
-  '<div data-bar="test" data-foo="0" id="foo">safe &amp; content</div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new_tag('div', sub {'unsafe & content'}),
-  '<div>unsafe & content</div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new_tag('div', id => 'foo', sub {'unsafe & content'}),
-  '<div id="foo">unsafe & content</div>',
-  'right result'
-);
-is(
-  Mojo::DOM->new->new_tag('foo', hidden => undef),
-  '<foo hidden></foo>',
-  'right result'
-);
-is(
-  Mojo::DOM->new->xml(1)->new_tag('foo', hidden => undef),
-  '<foo hidden="hidden" />',
-  'right result'
-);
-$dom = Mojo::DOM->new('<div>Test</div>');
-my $br = $dom->new_tag('br');
-$dom->at('div')->append_content($br)->append_content($br);
-is $dom, '<div>Test<br><br></div>', 'right result';
-is tag_to_html('div', id => 'foo', 'bar'), '<div id="foo">bar</div>',
-  'right result';
-
-# Generate selector
-$dom = Mojo::DOM->new(<<EOF);
-<html>
-  <head>
-    <title>Test</title>
-  </head>
-  <body>
-    <p id="a">A</p>
-    <p id="b">B</p>
-    <p id="c">C</p>
-    <p id="d">D</p>
-  </body>
-<html>
-EOF
-is $dom->selector, undef, 'not a tag';
-is $dom->at('#a')->child_nodes->first->selector, undef, 'not a tag';
-is $dom->at('#a')->selector,
-  'html:nth-child(1) > body:nth-child(2) > p:nth-child(1)', 'right selector';
-is $dom->at($dom->at('#a')->selector)->text, 'A', 'right text';
-is $dom->at('#b')->selector,
-  'html:nth-child(1) > body:nth-child(2) > p:nth-child(2)', 'right selector';
-is $dom->at($dom->at('#b')->selector)->text, 'B', 'right text';
-is $dom->at('#c')->selector,
-  'html:nth-child(1) > body:nth-child(2) > p:nth-child(3)', 'right selector';
-is $dom->at($dom->at('#c')->selector)->text, 'C', 'right text';
-is $dom->at('#d')->selector,
-  'html:nth-child(1) > body:nth-child(2) > p:nth-child(4)', 'right selector';
-is $dom->at($dom->at('#d')->selector)->text, 'D', 'right text';
-is $dom->at('title')->selector,
-  'html:nth-child(1) > head:nth-child(1) > title:nth-child(1)',
-  'right selector';
-is $dom->at($dom->at('title')->selector)->text, 'Test', 'right text';
-is $dom->at('html')->selector, 'html:nth-child(1)', 'right selector';
-
-# Reusing partial DOM trees
-$dom = $dom->parse('<div><b>Test</b></div>');
-is $dom->at('div')->prepend($dom->at('b'))->root,
-  '<b>Test</b><div><b>Test</b></div>', 'right result';
 
 done_testing();

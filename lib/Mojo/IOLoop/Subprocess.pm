@@ -1,6 +1,7 @@
 package Mojo::IOLoop::Subprocess;
-use Mojo::Base 'Mojo::EventEmitter';
+use Mojo::Base -base;
 
+use Carp 'croak';
 use Config;
 use Mojo::IOLoop;
 use Mojo::IOLoop::Stream;
@@ -8,73 +9,45 @@ use POSIX ();
 use Storable;
 
 has deserialize => sub { \&Storable::thaw };
-has ioloop      => sub { Mojo::IOLoop->singleton }, weak => 1;
+has ioloop      => sub { Mojo::IOLoop->singleton };
 has serialize   => sub { \&Storable::freeze };
 
 sub pid { shift->{pid} }
 
 sub run {
-  my ($self, @args) = @_;
-  $self->ioloop->next_tick(sub { $self->_start(@args) });
-  return $self;
-}
-
-sub _start {
   my ($self, $child, $parent) = @_;
 
   # No fork emulation support
-  return $self->$parent('Subprocesses do not support fork emulation')
-    if $Config{d_pseudofork};
+  croak 'Subprocesses do not support fork emulation' if $Config{d_pseudofork};
 
   # Pipe for subprocess communication
-  return $self->$parent("Can't create pipe: $!")
-    unless pipe(my $reader, $self->{writer});
-  $self->{writer}->autoflush(1);
+  pipe(my $reader, my $writer) or croak "Can't create pipe: $!";
+  $writer->autoflush(1);
 
   # Child
-  return $self->$parent("Can't fork: $!")
-    unless defined(my $pid = $self->{pid} = fork);
+  croak "Can't fork: $!" unless defined(my $pid = $self->{pid} = fork);
   unless ($pid) {
     $self->ioloop->reset;
     my $results = eval { [$self->$child] } || [];
-    print {$self->{writer}} '0-', $self->serialize->([$@, @$results]);
-    $self->emit('cleanup');
+    print $writer $self->serialize->([$@, @$results]);
     POSIX::_exit(0);
   }
 
   # Parent
-  my $me = $$;
-  close $self->{writer};
+  my $me     = $$;
   my $stream = Mojo::IOLoop::Stream->new($reader)->timeout(0);
-  $self->emit('spawn')->ioloop->stream($stream);
+  $self->ioloop->stream($stream);
   my $buffer = '';
-  $stream->on(
-    read => sub {
-      $buffer .= pop;
-      while (1) {
-        my ($len) = $buffer =~ /^([0-9]+)\-/;
-        last unless $len and length $buffer >= $len + $+[0];
-        my $snippet = substr $buffer, 0, $len + $+[0], '';
-        my $args    = $self->deserialize->(substr $snippet, $+[0]);
-        $self->emit(progress => @$args);
-      }
-    }
-  );
+  $stream->on(read => sub { $buffer .= pop });
   $stream->on(
     close => sub {
       return unless $$ == $me;
       waitpid $pid, 0;
-      substr $buffer, 0, 2, '';
       my $results = eval { $self->deserialize->($buffer) } || [];
       $self->$parent(shift(@$results) // $@, @$results);
     }
   );
-}
-
-sub progress {
-  my ($self, @args) = @_;
-  my $serialized = $self->serialize->(\@args);
-  print {$self->{writer}} length($serialized), '-', $serialized;
+  return $self;
 }
 
 1;
@@ -112,51 +85,6 @@ Mojo::IOLoop::Subprocess - Subprocesses
 L<Mojo::IOLoop::Subprocess> allows L<Mojo::IOLoop> to perform computationally
 expensive operations in subprocesses, without blocking the event loop.
 
-=head1 EVENTS
-
-L<Mojo::IOLoop::Subprocess> inherits all events from L<Mojo::EventEmitter> and
-can emit the following new ones.
-
-=head2 cleanup
-
-  $subprocess->on(cleanup => sub {
-    my $subprocess = shift;
-    ...
-  });
-
-Emitted in the subprocess right before the process will exit. Note that this
-event is EXPERIMENTAL and might change without warning!
-
-  $subprocess->on(cleanup => sub {
-    my $subprocess = shift;
-    say "Process $$ is about to exit";
-  });
-
-=head2 progress
-
-  $subprocess->on(progress => sub {
-    my ($subprocess, @data) = @_;
-    ...
-  });
-
-Emitted in the parent process when the subprocess calls the
-L<progress|/"progress1"> method.
-
-=head2 spawn
-
-  $subprocess->on(spawn => sub {
-    my $subprocess = shift;
-    ...
-  });
-
-Emitted in the parent process when the subprocess has been spawned.
-
-  $subprocess->on(spawn => sub {
-    my $subprocess = shift;
-    my $pid = $subprocess->pid;
-    say "Performing work in process $pid";
-  });
-
 =head1 ATTRIBUTES
 
 L<Mojo::IOLoop::Subprocess> implements the following attributes.
@@ -180,7 +108,6 @@ L<Storable>.
   $subprocess = $subprocess->ioloop(Mojo::IOLoop->new);
 
 Event loop object to control, defaults to the global L<Mojo::IOLoop> singleton.
-Note that this attribute is weakened.
 
 =head2 serialize
 
@@ -197,7 +124,7 @@ L<Storable>.
 
 =head1 METHODS
 
-L<Mojo::IOLoop::Subprocess> inherits all methods from L<Mojo::EventEmitter> and
+L<Mojo::IOLoop::Subprocess> inherits all methods from L<Mojo::Base> and
 implements the following new ones.
 
 =head2 pid
@@ -205,35 +132,6 @@ implements the following new ones.
   my $pid = $subprocess->pid;
 
 Process id of the spawned subprocess if available.
-
-=head2 progress
-
-  $subprocess->progress(@data);
-
-Send data serialized with L<Storable> to the parent process at any time during
-the subprocess's execution. Must be called by the subprocess and emits the
-L</"progress"> event in the parent process with the data.
-
-  # Send progress information to the parent process
-  $subprocess->run(
-    sub {
-      my $subprocess = shift;
-      $subprocess->progress('0%');
-      sleep 5;
-      $subprocess->progress('50%');
-      sleep 5;
-      return 'Hello Mojo!';
-    },
-    sub {
-      my ($subprocess, $err, @results) = @_;
-      say 'Progress is 100%';
-      say $results[0];
-    }
-  );
-  $subprocess->on(progress => sub {
-    my ($subprocess, @data) = @_;
-    say "Progress is $data[0]";
-  });
 
 =head2 run
 
@@ -247,6 +145,6 @@ L<Storable>, so they can be shared between processes.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

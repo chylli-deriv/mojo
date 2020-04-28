@@ -6,7 +6,7 @@ use Test::More;
 use Mojo::IOLoop::Server;
 
 plan skip_all => 'set TEST_IPV6 to enable this test (developer only!)'
-  unless $ENV{TEST_IPV6} || $ENV{TEST_ALL};
+  unless $ENV{TEST_IPV6};
 
 use Mojo::IOLoop;
 
@@ -19,7 +19,7 @@ my $id  = Mojo::IOLoop->server(
     my ($loop, $stream) = @_;
     $stream->write('test' => sub { shift->write('321') });
     $stream->on(close => $end);
-    $stream->on(read  => sub { $server .= pop });
+    $stream->on(read => sub { $server .= pop });
   }
 );
 my $port = Mojo::IOLoop->acceptor($id)->port;
@@ -29,7 +29,7 @@ Mojo::IOLoop->client(
     my ($loop, $err, $stream) = @_;
     $stream->write('tset' => sub { shift->write('123') });
     $stream->on(close => $end);
-    $stream->on(read  => sub { $client .= pop });
+    $stream->on(read => sub { $client .= pop });
     $stream->timeout(0.5);
   }
 );

@@ -54,7 +54,7 @@ $test->route('/edit')->to(action => 'edit')->name('test_edit');
 $r->route('/:controller/testedit')->to(action => 'testedit');
 
 # /*/test/delete/*
-$test->route('/delete/<id>', id => qr/\d+/)->to(action => 'delete', id => 23);
+$test->route('/delete/(id)', id => qr/\d+/)->to(action => 'delete', id => 23);
 
 # /test2
 my $test2 = $r->route('/test2/')->inline(1)->to(controller => 'test2');
@@ -75,14 +75,14 @@ $test2->route('/baz')->to('just#works');
 $r->route('/')->to(controller => 'hello', action => 'world');
 
 # /wildcards/1/*
-$r->route('/wildcards/1/<*wildcard>', wildcard => qr/(?:.*)/)
+$r->route('/wildcards/1/(*wildcard)', wildcard => qr/(?:.*)/)
   ->to(controller => 'wild', action => 'card');
 
 # /wildcards/2/*
 $r->route('/wildcards/2/*wildcard')->to(controller => 'card', action => 'wild');
 
 # /wildcards/3/*/foo
-$r->route('/wildcards/3/<*wildcard>/foo')
+$r->route('/wildcards/3/(*wildcard)/foo')
   ->to(controller => 'very', action => 'dangerous');
 
 # /wildcards/4/*/foo
@@ -118,11 +118,6 @@ $r->route('/format6', format => 0)
 # /format7.foo
 # /format7.foobar
 $r->route('/format7', format => [qw(foo foobar)])->to('perl#rocks');
-
-# /type/23
-# /type/24
-$r->add_type(my_num => [23, 24]);
-$r->route('/type/<id:my_num>')->to('foo#bar');
 
 # /articles/1/edit
 # /articles/1/delete
@@ -185,7 +180,7 @@ $inactive->route('/nodetect2', format => ['txt', 'html'])->to('bar#hyper');
 # /source/third
 # /source/third.xml
 my $source = $r->route('/source')->to('source#');
-my $first  = $source->route(format => 0)->route('/first')->to('#first');
+my $first = $source->route(format => 0)->route('/first')->to('#first');
 $source->route('/second')->to('#second');
 my $third  = $source->route('/third')->to('#third');
 my $target = $r->remove->route('/target')->to('target#');
@@ -276,7 +271,7 @@ $m->find($c => {method => 'GET', path => '/alternatives'});
 is_deeply $m->stack, [{foo => 11}], 'right strucutre';
 is $m->path_for->{path}, '/alternatives', 'right path';
 is $m->path_for(format => 'txt')->{path}, '/alternatives/11.txt', 'right path';
-is $m->path_for(foo    => 12, format => 'txt')->{path}, '/alternatives/12.txt',
+is $m->path_for(foo => 12, format => 'txt')->{path}, '/alternatives/12.txt',
   'right path';
 $m = Mojolicious::Routes::Match->new(root => $r);
 $m->find($c => {method => 'GET', path => '/alternatives/0'});
@@ -369,7 +364,7 @@ $m->find($c => {method => 'GET', path => '/optional/23'});
 is_deeply $m->stack, [{foo => 23, bar => 'test'}], 'right structure';
 is $m->path_for->{path}, '/optional/23', 'right path';
 is $m->path_for(format => 'txt')->{path}, '/optional/23/test.txt', 'right path';
-is $m->path_for(foo    => 12, format => 'txt')->{path}, '/optional/12/test.txt',
+is $m->path_for(foo => 12, format => 'txt')->{path}, '/optional/12/test.txt',
   'right path';
 is $m->path_for('optionalfoobar', format => 'txt')->{path},
   '/optional/23/test.txt', 'right path';
@@ -527,8 +522,8 @@ is $m->path_for->{path}, '/wildcards/3/hello/there/foo', 'right path';
 $m = Mojolicious::Routes::Match->new(root => $r);
 $m->find($c => {method => 'GET', path => '/wildcards/4/hello/there/foo'});
 is_deeply $m->stack,
-  [{controller => 'somewhat', action => 'dangerous', wildcard => 'hello/there'
-  }], 'right structure';
+  [{controller => 'somewhat', action => 'dangerous', wildcard => 'hello/there'}
+  ], 'right structure';
 is $m->path_for->{path}, '/wildcards/4/hello/there/foo', 'right path';
 
 # Special characters
@@ -666,21 +661,6 @@ is_deeply $m->stack,
 is $m->path_for->{path}, '/format7.foobar', 'right path';
 $m = Mojolicious::Routes::Match->new(root => $r);
 $m->find($c => {method => 'GET', path => '/format7.foobarbaz'});
-is_deeply $m->stack, [], 'empty stack';
-
-# Placeholder types
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/type/23'});
-is_deeply $m->stack, [{controller => 'foo', action => 'bar', id => 23}],
-  'right structure';
-is $m->path_for->{path}, '/type/23', 'right path';
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/type/24'});
-is_deeply $m->stack, [{controller => 'foo', action => 'bar', id => 24}],
-  'right structure';
-is $m->path_for->{path}, '/type/24', 'right path';
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/type/25'});
 is_deeply $m->stack, [], 'empty stack';
 
 # Request methods
@@ -966,18 +946,5 @@ is_deeply $m->stack,
   [{one => 123, two => 'c.123', three => 'd/123', four => 4}],
   'right structure';
 is $m->path_for->{path}, '/custom_pattern/a_123_b/c.123/d/123', 'right path';
-
-# Unknown placeholder type (matches nothing)
-$r = Mojolicious::Routes->new;
-$r->get('/<foo:does_not_exist>');
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/'});
-is_deeply $m->stack, [], 'empty stack';
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/test'});
-is_deeply $m->stack, [], 'empty stack';
-$m = Mojolicious::Routes::Match->new(root => $r);
-$m->find($c => {method => 'GET', path => '/23'});
-is_deeply $m->stack, [], 'empty stack';
 
 done_testing();

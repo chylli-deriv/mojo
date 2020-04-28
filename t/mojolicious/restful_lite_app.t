@@ -2,10 +2,10 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 use Mojo::JSON qw(false true);
 use Mojolicious::Lite;
+use Test::Mojo;
 
 any [qw(POST PUT)] => '/json/echo' => sub {
   my $c = shift;
@@ -19,7 +19,7 @@ get '/accepts' => sub {
 
 get '/wants_json' => sub {
   my $c = shift;
-  $c->render(json => {wants_json => $c->accepts('', 'json') ? \1 : \0});
+  $c->render(json => {wants_json => \$c->accepts('', 'json')});
 };
 
 under '/rest';
@@ -39,7 +39,7 @@ post sub {
     json => {json => {just => 'works too'}},
     html => {text => '<html><body>works too'},
     xml  => {data => '<just>works too</just>'},
-    any  => {text => 'works too', status => 201}
+    any => {text => 'works too', status => 201}
   );
 };
 
@@ -85,7 +85,7 @@ $t->get_ok('/accepts' => {Accept => 'text/plain'})->status_is(200)
   ->json_is({best => 'txt'});
 
 # Accept "txt" with everything
-$t->get_ok('/accepts.json?format=txt' => {Accept => 'text/html'})
+$t->get_ok('/accepts.html?format=json' => {Accept => 'text/plain'})
   ->status_is(200)->json_is({best => 'txt'});
 
 # Nothing
@@ -122,6 +122,10 @@ $t->get_ok('/rest' => {Accept => 'Text/Html'})->status_is(200)
 
 # Accept "html" with format
 $t->get_ok('/rest.html' => {Accept => 'text/html'})->status_is(200)
+  ->content_type_is('text/html;charset=UTF-8')->text_is('html > body', 'works');
+
+# Accept "html" with wrong format
+$t->get_ok('/rest.json' => {Accept => 'text/html'})->status_is(200)
   ->content_type_is('text/html;charset=UTF-8')->text_is('html > body', 'works');
 
 # Accept "html" with quality
@@ -164,6 +168,11 @@ $t->get_ok('/rest.json' => {Accept => 'application/json'})->status_is(200)
   ->content_type_is('application/json;charset=UTF-8')
   ->json_is({just => 'works'});
 
+# Accept "json" with wrong format
+$t->get_ok('/rest.png' => {Accept => 'application/json'})->status_is(200)
+  ->content_type_is('application/json;charset=UTF-8')
+  ->json_is({just => 'works'});
+
 # Accept "json" with quality
 $t->get_ok('/rest' => {Accept => 'application/json;q=9'})->status_is(200)
   ->content_type_is('application/json;charset=UTF-8')
@@ -203,6 +212,10 @@ $t->get_ok('/rest' => {Accept => 'APPLICATION/XML'})->status_is(200)
 
 # Accept "xml" with format
 $t->get_ok('/rest.xml' => {Accept => 'application/xml'})->status_is(200)
+  ->content_type_is('application/xml')->text_is(just => 'works');
+
+# Accept "xml" with wrong format
+$t->get_ok('/rest.txt' => {Accept => 'application/xml'})->status_is(200)
   ->content_type_is('application/xml')->text_is(just => 'works');
 
 # Accept "xml" with quality
@@ -251,6 +264,11 @@ $t->post_ok('/rest' => {Accept => 'Text/Html'})->status_is(200)
 
 # Accept "html" with format
 $t->post_ok('/rest.html' => {Accept => 'text/html'})->status_is(200)
+  ->content_type_is('text/html;charset=UTF-8')
+  ->text_is('html > body', 'works too');
+
+# Accept "html" with wrong format
+$t->post_ok('/rest.json' => {Accept => 'text/html'})->status_is(200)
   ->content_type_is('text/html;charset=UTF-8')
   ->text_is('html > body', 'works too');
 
@@ -320,6 +338,11 @@ $t->post_ok('/rest.json' => {Accept => 'application/json'})->status_is(200)
   ->content_type_is('application/json;charset=UTF-8')
   ->json_is({just => 'works too'});
 
+# Accept "json" with wrong format
+$t->post_ok('/rest.png' => {Accept => 'application/json'})->status_is(200)
+  ->content_type_is('application/json;charset=UTF-8')
+  ->json_is({just => 'works too'});
+
 # Accept "json" with quality
 $t->post_ok('/rest' => {Accept => 'application/json;q=9'})->status_is(200)
   ->content_type_is('application/json;charset=UTF-8')
@@ -383,6 +406,10 @@ $t->post_ok('/rest' => {Accept => 'APPLICATION/XML'})->status_is(200)
 $t->post_ok('/rest.xml' => {Accept => 'application/xml'})->status_is(200)
   ->content_type_is('application/xml')->text_is(just => 'works too');
 
+# Accept "xml" with wrong format
+$t->post_ok('/rest.txt' => {Accept => 'application/xml'})->status_is(200)
+  ->content_type_is('application/xml')->text_is(just => 'works too');
+
 # Accept "xml" with quality
 $t->post_ok('/rest' => {Accept => 'application/xml;q=9'})->status_is(200)
   ->content_type_is('application/xml')->text_is(just => 'works too');
@@ -429,17 +456,16 @@ $t->post_ok(
 $t->post_ok('/rest' => {Accept => 'image/png'})->status_is(201)
   ->content_type_is('text/html;charset=UTF-8')->content_is('works too');
 
-# Unsupported everything
-$t->post_ok('/rest.png?format=jpg' => {Accept => 'image/whatever'})
-  ->status_is(201)->content_type_is('text/html;charset=UTF-8')
-  ->content_is('works too');
+# Unsupported accept with supported query
+$t->post_ok('/rest?format=json' => {Accept => 'image/png'})->status_is(201)
+  ->content_type_is('text/html;charset=UTF-8')->content_is('works too');
 
 # Unsupported format
 $t->post_ok('/rest.png')->status_is(201)
   ->content_type_is('text/html;charset=UTF-8')->content_is('works too');
 
-# Unsupported format and query
-$t->post_ok('/rest.png?format=png')->status_is(201)
+# Unsupported format with supported query
+$t->post_ok('/rest.png?format=json')->status_is(201)
   ->content_type_is('text/html;charset=UTF-8')->content_is('works too');
 
 # Does not exist
@@ -451,9 +477,21 @@ $t->get_ok('/rest' => {Accept => $ajax, 'X-Requested-With' => 'XMLHttpRequest'})
   ->status_is(200)->content_type_is('application/xml')
   ->text_is(just => 'works');
 
-# Chrome 64
-my $chrome = 'text/html,application/xhtml+xml,application/xml;q=0.9'
-  . ',image/webp,image/apng,*/*;q=0.8';
+# Internet Explorer 8
+my $ie
+  = 'image/jpeg, application/x-ms-application, image/gif, application/xaml+xml'
+  . ', image/pjpeg, application/x-ms-xbap, application/x-shockwave-flash'
+  . ', application/msword, */*';
+$t->get_ok('/rest.html' => {Accept => $ie})->status_is(200)
+  ->content_type_is('text/html;charset=UTF-8')->text_is('html > body', 'works');
+
+# Internet Explorer 8 with query
+$t->get_ok('/rest?format=html' => {Accept => $ie})->status_is(200)
+  ->content_type_is('text/html;charset=UTF-8')->text_is('html > body', 'works');
+
+# Chrome 11
+my $chrome = 'application/xml,application/xhtml+xml,text/html;q=0.9'
+  . ',text/plain;q=0.8,image/png,*/*;q=0.5';
 $t->get_ok('/rest.html' => {Accept => $chrome})->status_is(200)
   ->content_type_is('text/html;charset=UTF-8')->text_is('html > body', 'works');
 

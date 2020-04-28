@@ -28,7 +28,7 @@ ok time < ($time + 10), 'stopped automatically';
 
 # Listen
 my $listen = IO::Socket::INET->new(Listen => 5, LocalAddr => '127.0.0.1');
-my $port   = $listen->sockport;
+my $port = $listen->sockport;
 my ($readable, $writable);
 $reactor->io($listen => sub { pop() ? $writable++ : $readable++ })
   ->watch($listen, 0, 0)->watch($listen, 1, 1);
@@ -234,12 +234,6 @@ $reactor->timer(0 => sub { die "works!\n" });
 $reactor->start;
 like $err, qr/works!/, 'right error';
 
-# Reset events
-$reactor->on(error => sub { });
-ok $reactor->has_subscribers('error'), 'has subscribers';
-$reactor->reset;
-ok !$reactor->has_subscribers('error'), 'no subscribers';
-
 # Recursion
 $timer   = undef;
 $reactor = $reactor->new;
@@ -249,6 +243,18 @@ is $timer, 1, 'timer was triggered once';
 
 # Detection
 is(Mojo::Reactor::Poll->detect, 'Mojo::Reactor::Poll', 'right class');
+
+# Dummy reactor
+package Mojo::Reactor::Test;
+use Mojo::Base 'Mojo::Reactor::Poll';
+
+package main;
+
+# Detection (env)
+{
+  local $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Test';
+  is(Mojo::Reactor->detect, 'Mojo::Reactor::Test', 'right class');
+}
 
 # Reactor in control
 is ref Mojo::IOLoop->singleton->reactor, 'Mojo::Reactor::Poll', 'right object';

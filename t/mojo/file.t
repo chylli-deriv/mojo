@@ -2,12 +2,12 @@ use Mojo::Base -strict;
 
 use Test::More;
 use Cwd qw(getcwd realpath);
-use Fcntl qw(O_RDONLY);
+use Fcntl 'O_RDONLY';
 use File::Basename qw(basename dirname);
 use File::Spec::Functions qw(abs2rel canonpath catfile rel2abs splitdir);
 use File::Temp;
-use Mojo::File qw(curfile path tempdir tempfile);
-use Mojo::Util qw(encode);
+use Mojo::File qw(path tempdir tempfile);
+use Mojo::Util 'encode';
 
 # Constructor
 is(Mojo::File->new, canonpath(getcwd), 'same path');
@@ -48,15 +48,10 @@ is path('.')->realpath, realpath('.'), 'same path';
 is path('file.t')->to_abs->basename, basename(rel2abs 'file.t'), 'same path';
 is path('file.t')->to_abs->basename('.t'), basename(rel2abs('file.t'), '.t'),
   'same path';
-is path('file.t')->basename('.t'), basename('file.t', '.t'), 'same path';
 
 # Dirname
 is path('file.t')->to_abs->dirname, scalar dirname(rel2abs 'file.t'),
   'same path';
-
-# Current file
-ok curfile->is_abs, 'path is absolute';
-is curfile, realpath(__FILE__), 'same path';
 
 # Checks
 ok path(__FILE__)->to_abs->is_abs, 'path is absolute';
@@ -72,7 +67,7 @@ $dir = tempdir 'mytestXXXXX';
 ok -d $dir, 'directory exists';
 like $dir->basename, qr/mytest.{5}$/, 'right format';
 
-# Temporary directory (separate object)
+# Temporary diectory (separate object)
 $dir  = Mojo::File->new(File::Temp->newdir);
 $path = "$dir";
 ok -d $path, 'directory exists';
@@ -101,13 +96,6 @@ is_deeply [<$handle>], ["test\n", "123\n"], 'right structure';
 $file->spurt(encode('UTF-8', '♥'));
 $handle = $file->open('<:encoding(UTF-8)');
 is_deeply [<$handle>], ['♥'], 'right structure';
-$dir = tempdir;
-eval { $dir->child('does_not_exist')->open('<') };
-like $@, qr/^Can't open file/, 'right error';
-eval { $dir->child('does_not_exist')->slurp };
-like $@, qr/^Can't open file/, 'right error';
-eval { $dir->child('foo')->make_path->spurt('fail') };
-like $@, qr/^Can't open file/, 'right error';
 
 # Make path
 $dir = tempdir;
@@ -118,16 +106,6 @@ ok -d $subdir, 'directory exists';
 my $nextdir = $dir->child('foo', 'foobar')->make_path({error => \my $error});
 ok -d $nextdir, 'directory exists';
 ok $error, 'directory already existed';
-
-# Remove
-$dir = tempdir;
-$dir->child('test.txt')->spurt('test!');
-ok -e $dir->child('test.txt'), 'file exists';
-is $dir->child('test.txt')->slurp, 'test!', 'right content';
-ok !-e $dir->child('test.txt')->remove->touch->remove->remove,
-  'file no longer exists';
-eval { $dir->child('foo')->make_path->remove };
-like $@, qr/^Can't remove file/, 'right error';
 
 # Remove tree
 $dir = tempdir;
@@ -176,29 +154,10 @@ ok -f $destination2, 'file also exists now';
 is $destination->slurp,  'works!', 'right content';
 is $destination2->slurp, 'works!', 'right content';
 
-# Change permissions
-$dir = tempdir;
-eval { $dir->child('does_not_exist')->chmod(644) };
-like $@, qr/^Can't chmod file/, 'right error';
-
-# Stat
-$dir = tempdir;
-is $dir->child('test.txt')->spurt('1234')->stat->size, 4, 'right size';
-
-# Lstat
-$dir = tempdir;
-my $orig = $dir->child('test.txt')->spurt('');
-my $link = $orig->sibling('test.link');
-SKIP: {
-  skip 'symlinks unimplemented', 2 unless eval { symlink $orig, $link };
-  is $link->stat->size,    0, 'target file is empty';
-  isnt $link->lstat->size, 0, 'link is not empty';
-}
-
 # List
 is_deeply path('does_not_exist')->list->to_array, [], 'no files';
-is_deeply curfile->list->to_array, [], 'no files';
-my $lib   = curfile->sibling('lib', 'Mojo');
+is_deeply path(__FILE__)->list->to_array,         [], 'no files';
+my $lib = path(__FILE__)->sibling('lib', 'Mojo');
 my @files = map { path($lib)->child(split '/') } (
   'DeprecationTest.pm',  'LoaderException.pm',
   'LoaderException2.pm', 'TestConnectProxy.pm'
@@ -210,8 +169,7 @@ is_deeply path($lib)->list({hidden => 1})->map('to_string')->to_array, \@files,
 @files = map { path($lib)->child(split '/') } (
   'BaseTest',           'DeprecationTest.pm',
   'LoaderException.pm', 'LoaderException2.pm',
-  'LoaderTest',         'Server',
-  'TestConnectProxy.pm'
+  'LoaderTest',         'TestConnectProxy.pm'
 );
 is_deeply path($lib)->list({dir => 1})->map('to_string')->to_array, \@files,
   'right files';
@@ -221,14 +179,13 @@ is_deeply path($lib)->list({dir => 1, hidden => 1})->map('to_string')->to_array,
 
 # List tree
 is_deeply path('does_not_exist')->list_tree->to_array, [], 'no files';
-is_deeply curfile->list_tree->to_array, [], 'no files';
+is_deeply path(__FILE__)->list_tree->to_array,         [], 'no files';
 @files = map { path($lib)->child(split '/') } (
   'BaseTest/Base1.pm',  'BaseTest/Base2.pm',
   'BaseTest/Base3.pm',  'DeprecationTest.pm',
   'LoaderException.pm', 'LoaderException2.pm',
   'LoaderTest/A.pm',    'LoaderTest/B.pm',
-  'LoaderTest/C.pm',    'Server/Morbo/Backend/TestBackend.pm',
-  'TestConnectProxy.pm'
+  'LoaderTest/C.pm',    'TestConnectProxy.pm'
 );
 is_deeply path($lib)->list_tree->map('to_string')->to_array, \@files,
   'right files';
@@ -237,73 +194,17 @@ is_deeply path($lib)->list_tree->map('to_string')->to_array, \@files,
 is_deeply path($lib)->list_tree({hidden => 1})->map('to_string')->to_array,
   [@hidden, @files], 'right files';
 my @all = map { path($lib)->child(split '/') } (
-  '.hidden.txt',          '.test',
-  '.test/hidden.txt',     'BaseTest',
-  'BaseTest/Base1.pm',    'BaseTest/Base2.pm',
-  'BaseTest/Base3.pm',    'DeprecationTest.pm',
-  'LoaderException.pm',   'LoaderException2.pm',
-  'LoaderTest',           'LoaderTest/A.pm',
-  'LoaderTest/B.pm',      'LoaderTest/C.pm',
-  'Server',               'Server/Morbo',
-  'Server/Morbo/Backend', 'Server/Morbo/Backend/TestBackend.pm',
+  '.hidden.txt',        '.test',
+  '.test/hidden.txt',   'BaseTest',
+  'BaseTest/Base1.pm',  'BaseTest/Base2.pm',
+  'BaseTest/Base3.pm',  'DeprecationTest.pm',
+  'LoaderException.pm', 'LoaderException2.pm',
+  'LoaderTest',         'LoaderTest/A.pm',
+  'LoaderTest/B.pm',    'LoaderTest/C.pm',
   'TestConnectProxy.pm'
 );
 is_deeply path($lib)->list_tree({dir => 1, hidden => 1})->map('to_string')
   ->to_array, [@all], 'right files';
-my @one = map { path($lib)->child(split '/') } (
-  'DeprecationTest.pm',  'LoaderException.pm',
-  'LoaderException2.pm', 'TestConnectProxy.pm'
-);
-is_deeply path($lib)->list_tree({max_depth => 1})->map('to_string')->to_array,
-  [@one], 'right files';
-my @one_dir = map { path($lib)->child(split '/') } (
-  'BaseTest',           'DeprecationTest.pm',
-  'LoaderException.pm', 'LoaderException2.pm',
-  'LoaderTest',         'Server',
-  'TestConnectProxy.pm'
-);
-is_deeply path($lib)->list_tree({dir => 1, max_depth => 1})->map('to_string')
-  ->to_array, [@one_dir], 'right files';
-my @two = map { path($lib)->child(split '/') } (
-  'BaseTest/Base1.pm',  'BaseTest/Base2.pm',
-  'BaseTest/Base3.pm',  'DeprecationTest.pm',
-  'LoaderException.pm', 'LoaderException2.pm',
-  'LoaderTest/A.pm',    'LoaderTest/B.pm',
-  'LoaderTest/C.pm',    'TestConnectProxy.pm'
-);
-is_deeply path($lib)->list_tree({max_depth => 2})->map('to_string')->to_array,
-  [@two], 'right files';
-my @three = map { path($lib)->child(split '/') } (
-  '.hidden.txt',          '.test',
-  '.test/hidden.txt',     'BaseTest',
-  'BaseTest/Base1.pm',    'BaseTest/Base2.pm',
-  'BaseTest/Base3.pm',    'DeprecationTest.pm',
-  'LoaderException.pm',   'LoaderException2.pm',
-  'LoaderTest',           'LoaderTest/A.pm',
-  'LoaderTest/B.pm',      'LoaderTest/C.pm',
-  'Server',               'Server/Morbo',
-  'Server/Morbo/Backend', 'TestConnectProxy.pm'
-);
-is_deeply path($lib)->list_tree({dir => 1, hidden => 1, max_depth => 3})
-  ->map('to_string')->to_array, [@three], 'right files';
-
-# Touch
-$dir  = tempdir;
-$file = $dir->child('test.txt');
-ok !-e $file, 'file does not exist';
-ok -e $file->touch, 'file exists';
-is $file->spurt('test!')->slurp, 'test!', 'right content';
-is $file->touch->slurp, 'test!', 'right content';
-my $future = time + 1000;
-utime $future, $future, $file->to_string;
-is $file->stat->mtime, $future, 'right mtime';
-isnt $file->touch->stat->mtime, $future, 'different mtime';
-
-# Dangerous paths
-eval { path('foo', undef, 'bar') };
-like $@, qr/Invalid path/, 'right error';
-eval { path(undef) };
-like $@, qr/Invalid path/, 'right error';
 
 # I/O
 $dir  = tempdir;

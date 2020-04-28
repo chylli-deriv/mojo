@@ -1,7 +1,7 @@
 package MojoliciousTest::Command::test_command;
 use Mojo::Base 'Mojolicious::Command';
 
-use Mojo::Util qw(getopt);
+use Mojo::Util 'getopt';
 
 sub run {
   my ($self, @args) = @_;

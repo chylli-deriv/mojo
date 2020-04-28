@@ -2,14 +2,14 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Mojo::Message::Response;
 use Mojolicious::Lite;
+use Test::Mojo;
 
 # Internal redirect
 hook around_dispatch => sub {

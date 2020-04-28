@@ -2,7 +2,7 @@ package Mojolicious::Command::prefork;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Server::Prefork;
-use Mojo::Util qw(getopt);
+use Mojo::Util 'getopt';
 
 has description =>
   'Start application with pre-forking HTTP and WebSocket server';
@@ -20,12 +20,11 @@ sub run {
     'I|heartbeat-interval=i' => sub { $prefork->heartbeat_interval($_[1]) },
     'H|heartbeat-timeout=i'  => sub { $prefork->heartbeat_timeout($_[1]) },
     'i|inactivity-timeout=i' => sub { $prefork->inactivity_timeout($_[1]) },
-    'l|listen=s'             => \my @listen,
-    'P|pid-file=s'           => sub { $prefork->pid_file($_[1]) },
-    'p|proxy'                => sub { $prefork->reverse_proxy(1) },
-    'r|requests=i'           => sub { $prefork->max_requests($_[1]) },
-    's|spare=i'              => sub { $prefork->spare($_[1]) },
-    'w|workers=i'            => sub { $prefork->workers($_[1]) };
+    'l|listen=s'   => \my @listen,
+    'P|pid-file=s' => sub { $prefork->pid_file($_[1]) },
+    'p|proxy'      => sub { $prefork->reverse_proxy(1) },
+    'r|requests=i' => sub { $prefork->max_requests($_[1]) },
+    'w|workers=i'  => sub { $prefork->workers($_[1]) };
 
   $prefork->listen(\@listen) if @listen;
   $prefork->run;
@@ -47,7 +46,7 @@ Mojolicious::Command::prefork - Pre-fork command
     ./myapp.pl prefork -m production -l http://*:8080
     ./myapp.pl prefork -l http://127.0.0.1:8080 -l https://[::]:8081
     ./myapp.pl prefork -l 'https://*:443?cert=./server.crt&key=./server.key'
-    ./myapp.pl prefork -l http+unix://%2Ftmp%2Fmyapp.sock -w 12
+    ./myapp.pl prefork -l http+unix://%2Ftmp%2Fmyapp.sock
 
   Options:
     -a, --accepts <number>               Number of connections for workers to
@@ -56,9 +55,9 @@ Mojolicious::Command::prefork - Pre-fork command
                                          SOMAXCONN
     -c, --clients <number>               Maximum number of concurrent
                                          connections, defaults to 1000
-    -G, --graceful-timeout <seconds>     Graceful timeout, defaults to 120.
+    -G, --graceful-timeout <seconds>     Graceful timeout, defaults to 20.
     -I, --heartbeat-interval <seconds>   Heartbeat interval, defaults to 5
-    -H, --heartbeat-timeout <seconds>    Heartbeat timeout, defaults to 30
+    -H, --heartbeat-timeout <seconds>    Heartbeat timeout, defaults to 20
     -h, --help                           Show this summary of available options
         --home <path>                    Path to home directory of your
                                          application, defaults to the value of
@@ -72,14 +71,12 @@ Mojolicious::Command::prefork - Pre-fork command
                                          defaults to the value of
                                          MOJO_MODE/PLACK_ENV or "development"
     -P, --pid-file <path>                Path to process id file, defaults to
-                                         "prefork.pid" in a temporary directory
+                                         "prefork.pid" in a temporary diretory
     -p, --proxy                          Activate reverse proxy support,
                                          defaults to the value of
                                          MOJO_REVERSE_PROXY
     -r, --requests <number>              Maximum number of requests per
                                          keep-alive connection, defaults to 100
-    -s, --spare <number>                 Temporarily spawn up to this number of
-                                         additional workers, defaults to 2
     -w, --workers <number>               Number of workers, defaults to 4
 
 =head1 DESCRIPTION
@@ -103,14 +100,14 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $prefork->description;
   $prefork        = $prefork->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $prefork->usage;
   $prefork  = $prefork->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
@@ -125,6 +122,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

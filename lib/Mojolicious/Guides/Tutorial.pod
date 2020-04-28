@@ -35,8 +35,8 @@ L<Mojolicious::Lite>, turning your script into a full featured web application.
 
   app->start;
 
-With L<Mojolicious::Command::Author::generate::lite_app> there is also a helper
-command to generate a small example application.
+With L<Mojolicious::Command::generate::lite_app> there is also a helper command
+to generate a small example application.
 
   $ mojo generate lite_app myapp.pl
 
@@ -361,7 +361,7 @@ L<Mojolicious::Controller/"param">.
 
   # /testsomething/foo
   # /test123something/foo
-  get '/<:bar>something/foo' => sub {
+  get '/(:bar)something/foo' => sub {
     my $c   = shift;
     my $bar = $c->param('bar');
     $c->render(text => "Our :bar placeholder matched $bar");
@@ -370,7 +370,7 @@ L<Mojolicious::Controller/"param">.
   app->start;
 
 To separate them from the surrounding text, you can surround your placeholders
-with C<E<lt>> and C<E<gt>>, which also makes the colon prefix optional.
+with parentheses, which also makes the colon prefix optional.
 
 =head2 Relaxed Placeholders
 
@@ -657,8 +657,7 @@ placeholder.
 =head2 Content negotiation
 
 For resources with different representations and that require truly RESTful
-content negotiation you can also use
-L<Mojolicious::Plugin::DefaultHelpers/"respond_to">.
+content negotiation you can also use L<Mojolicious::Controller/"respond_to">.
 
   use Mojolicious::Lite;
 
@@ -735,36 +734,6 @@ They have a higher precedence than templates in the C<DATA> section.
 
   app->start;
 
-=head2 Home
-
-You can use L<Mojolicious/"home"> to interact with the directory your
-application considers its home. This is the directory it will search for
-C<public> and C<templates> directories, but you can use it to store all sorts of
-application specific data.
-
-  $ mkdir cache
-  $ echo 'Hello World!' > cache/hello.txt
-
-There are many useful methods L<Mojo::Home> inherits from L<Mojo::File>, like
-L<Mojo::File/"child"> and L<Mojo::File/"slurp">, that will help you keep your
-application portable across many different operating systems.
-
-  use Mojolicious::Lite;
-
-  # Load message into memory
-  my $hello = app->home->child('cache', 'hello.txt')->slurp;
-
-  # Display message
-  get '/' => sub {
-    my $c = shift;
-    $c->render(text => $hello);
-  };
-
-You can also introspect your application from the command line with
-L<Mojolicious::Command::eval>.
-
-  $ ./myapp.pl eval -v 'app->home'
-
 =head2 Conditions
 
 Conditions such as C<agent> and C<host> from
@@ -823,7 +792,7 @@ really tamper resistant.
 
 All files uploaded via C<multipart/form-data> request are automatically
 available as L<Mojo::Upload> objects from L<Mojolicious::Controller/"param">.
-And you don't have to worry about memory usage, because all files above 250KiB
+And you don't have to worry about memory usage, because all files above 250KB
 will be automatically streamed into a temporary file. To build HTML forms more
 efficiently, you can also use tag helpers like
 L<Mojolicious::Plugin::TagHelpers/"form_for">.
@@ -863,11 +832,11 @@ L<Mojolicious::Plugin::TagHelpers/"form_for">.
     </body>
   </html>
 
-To protect you from excessively large files there is also a limit of 16MiB by
+To protect you from excessively large files there is also a limit of 16MB by
 default, which you can tweak with the attribute
 L<Mojolicious/"max_request_size">.
 
-  # Increase limit to 1GiB
+  # Increase limit to 1GB
   app->max_request_size(1073741824);
 
 =head2 User agent
@@ -882,7 +851,7 @@ L<Mojo::JSON> and L<Mojo::DOM> this can be a very powerful tool.
   # Blocking
   get '/headers' => sub {
     my $c   = shift;
-    my $url = $c->param('url') || 'https://mojolicious.org';
+    my $url = $c->param('url') || 'http://mojolicious.org';
     my $dom = $c->ua->get($url)->result->dom;
     $c->render(json => $dom->find('h1, h2, h3')->map('text')->to_array);
   };
@@ -898,16 +867,21 @@ L<Mojo::JSON> and L<Mojo::DOM> this can be a very powerful tool.
 
   # Concurrent non-blocking
   get '/titles' => sub {
-    my $c  = shift;
-    my $mojo = $c->ua->get_p('https://mojolicious.org');
-    my $cpan = $c->ua->get_p('https://metacpan.org');
-    Mojo::Promise->all($mojo, $cpan)->then(sub {
-      my ($mojo, $cpan) = @_;
-      $c->render(json => {
-        mojo => $mojo->[0]->result->dom->at('title')->text,
-        cpan => $cpan->[0]->result->dom->at('title')->text
-      });
-    })->wait;
+    my $c = shift;
+    $c->delay(
+      sub {
+        my $delay = shift;
+        $c->ua->get('http://mojolicious.org' => $delay->begin);
+        $c->ua->get('https://metacpan.org'   => $delay->begin);
+      },
+      sub {
+        my ($delay, $mojo, $cpan) = @_;
+        $c->render(json => {
+          mojo => $mojo->result->dom->at('title')->text,
+          cpan => $cpan->result->dom->at('title')->text
+        });
+      }
+    );
   };
 
   app->start;
@@ -960,10 +934,10 @@ L<Mojolicious::Guides::Cookbook/"REAL-TIME WEB">.
 
 =head2 Mode
 
-You can use the L<Mojo::Log> object from L<Mojolicious/"log"> to portably
-collect debug messages and automatically disable them later in a production
-setup by changing the L<Mojolicious> operating mode, which can also be retrieved
-from the attribute L<Mojolicious/"mode">.
+You can use the L<Mojo::Log> object from L<Mojo/"log"> to portably collect
+debug messages and automatically disable them later in a production setup by
+changing the L<Mojolicious> operating mode, which can also be retrieved from
+the attribute L<Mojolicious/"mode">.
 
   use Mojolicious::Lite;
 
@@ -1003,34 +977,34 @@ with normal Perl tests like C<t/basic.t>, which can be a lot of fun thanks to
 L<Test::Mojo>.
 
   use Test::More;
-  use Mojo::File qw(curfile);
   use Test::Mojo;
 
-  # Portably point to "../myapp.pl"
-  my $script = curfile->dirname->sibling('myapp.pl');
+  use FindBin;
+  require "$FindBin::Bin/../myapp.pl";
 
-  my $t = Test::Mojo->new($script);
+  my $t = Test::Mojo->new;
   $t->get_ok('/')->status_is(200)->content_like(qr/Funky/);
 
   done_testing();
 
-Just run your tests with L<prove>.
+Just run your tests with the command L<Mojolicious::Command::test> or L<prove>.
 
-  $ prove -l -v
+  $ ./myapp.pl test
+  $ ./myapp.pl test -v t/basic.t
   $ prove -l -v t/basic.t
 
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

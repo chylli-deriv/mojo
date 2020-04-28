@@ -1,7 +1,7 @@
 package Mojolicious::Plugin;
 use Mojo::Base -base;
 
-use Carp qw(croak);
+use Carp 'croak';
 
 sub register { croak 'Method "register" not implemented by subclass' }
 
@@ -47,6 +47,6 @@ be overloaded in a subclass.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

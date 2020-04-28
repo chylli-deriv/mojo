@@ -1,11 +1,12 @@
-package Mojolicious::Command::Author::generate::lite_app;
+package Mojolicious::Command::generate::lite_app;
 use Mojo::Base 'Mojolicious::Command';
 
 has description => 'Generate Mojolicious::Lite application';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
-  my ($self, $name) = (shift, shift || 'myapp.pl');
+  my ($self, $name) = @_;
+  $name ||= 'myapp.pl';
   $self->render_to_rel_file('liteapp', $name);
   $self->chmod_rel_file($name, 0744);
 }
@@ -16,7 +17,7 @@ sub run {
 
 =head1 NAME
 
-Mojolicious::Command::Author::generate::lite_app - Lite app generator command
+Mojolicious::Command::generate::lite_app - Lite app generator command
 
 =head1 SYNOPSIS
 
@@ -30,7 +31,7 @@ Mojolicious::Command::Author::generate::lite_app - Lite app generator command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::generate::lite_app> generate fully functional
+L<Mojolicious::Command::generate::lite_app> generate fully functional
 L<Mojolicious::Lite> applications.
 
 This is a core command, that means it is always enabled and its code a good
@@ -41,7 +42,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::generate::lite_app> inherits all attributes from
+L<Mojolicious::Command::generate::lite_app> inherits all attributes from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 description
@@ -49,18 +50,18 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $app->description;
   $app            = $app->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $app->usage;
   $app      = $app->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::generate::lite_app> inherits all methods from
+L<Mojolicious::Command::generate::lite_app> inherits all methods from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
@@ -71,7 +72,7 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut
 
@@ -80,6 +81,9 @@ __DATA__
 @@ liteapp
 #!/usr/bin/env perl
 use Mojolicious::Lite;
+
+# Documentation browser under "/perldoc"
+plugin 'PODRenderer';
 
 get '/' => sub {
   my $c = shift;
@@ -93,6 +97,8 @@ app->start;
 %% layout 'default';
 %% title 'Welcome';
 <h1>Welcome to the Mojolicious real-time web framework!</h1>
+To learn more, you can browse through the documentation
+<%%= link_to 'here' => '/perldoc' %>.
 
 <% %>@@ layouts/default.html.ep
 <!DOCTYPE html>

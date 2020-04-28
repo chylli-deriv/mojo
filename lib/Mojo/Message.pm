@@ -1,17 +1,17 @@
 package Mojo::Message;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp qw(croak);
+use Carp 'croak';
 use Mojo::Asset::Memory;
 use Mojo::Content::Single;
 use Mojo::DOM;
-use Mojo::JSON qw(j);
+use Mojo::JSON 'j';
 use Mojo::JSON::Pointer;
 use Mojo::Parameters;
 use Mojo::Upload;
-use Mojo::Util qw(decode);
+use Mojo::Util 'decode';
 
-has content          => sub { Mojo::Content::Single->new };
+has content => sub { Mojo::Content::Single->new };
 has default_charset  => 'UTF-8';
 has max_line_size    => sub { $ENV{MOJO_MAX_LINE_SIZE} || 8192 };
 has max_message_size => sub { $ENV{MOJO_MAX_MESSAGE_SIZE} // 16777216 };
@@ -179,14 +179,6 @@ sub parse {
     if $self->content->is_limit_exceeded;
 
   return $self->emit('progress')->content->is_finished ? $self->finish : $self;
-}
-
-sub save_to {
-  my ($self, $path) = @_;
-  my $content = $self->content;
-  croak 'Multipart content cannot be saved to files' if $content->is_multipart;
-  $content->asset->move_to($path);
-  return $self;
 }
 
 sub start_line_size {
@@ -388,7 +380,7 @@ defaults to C<UTF-8>.
   $msg     = $msg->max_line_size(1024);
 
 Maximum start-line size in bytes, defaults to the value of the
-C<MOJO_MAX_LINE_SIZE> environment variable or C<8192> (8KiB).
+C<MOJO_MAX_LINE_SIZE> environment variable or C<8192> (8KB).
 
 =head2 max_message_size
 
@@ -396,7 +388,7 @@ C<MOJO_MAX_LINE_SIZE> environment variable or C<8192> (8KiB).
   $msg     = $msg->max_message_size(1024);
 
 Maximum message size in bytes, defaults to the value of the
-C<MOJO_MAX_MESSAGE_SIZE> environment variable or C<16777216> (16MiB). Setting
+C<MOJO_MAX_MESSAGE_SIZE> environment variable or C<16777216> (16MB). Setting
 the value to C<0> will allow messages of indefinite size.
 
 =head2 version
@@ -416,7 +408,8 @@ the following new ones.
   my $bytes = $msg->body;
   $msg      = $msg->body('Hello!');
 
-Slurp or replace L</"content">.
+Slurp or replace L</"content">, L<Mojo::Content::MultiPart> will be
+automatically downgraded to L<Mojo::Content::Single>.
 
 =head2 body_params
 
@@ -427,7 +420,7 @@ C<multipart/form-data> message body, usually a L<Mojo::Parameters> object. Note
 that this method caches all data, so it should not be called before the entire
 message body has been received. Parts of the message body need to be loaded
 into memory to parse C<POST> parameters, so you have to make sure it is not
-excessively large. There's a 16MiB limit for requests and a 2GiB limit for
+excessively large. There's a 16MB limit for requests and a 2GB limit for
 responses by default.
 
   # Get POST parameter names and values
@@ -487,7 +480,7 @@ right away, which then returns a L<Mojo::Collection> object. Note that this
 method caches all data, so it should not be called before the entire message
 body has been received. The whole message body needs to be loaded into memory
 to parse it, so you have to make sure it is not excessively large. There's a
-16MiB limit for requests and a 2GiB limit for responses by default.
+16MB limit for requests and a 2GB limit for responses by default.
 
   # Perform "find" right away
   say $msg->dom('h1, h2, h3')->map('text')->join("\n");
@@ -609,7 +602,7 @@ Pointer can be used to extract a specific value with L<Mojo::JSON::Pointer>.
 Note that this method caches all data, so it should not be called before the
 entire message body has been received. The whole message body needs to be
 loaded into memory to parse it, so you have to make sure it is not excessively
-large. There's a 16MiB limit for requests and a 2GiB limit for responses by
+large. There's a 16MB limit for requests and a 2GB limit for responses by
 default.
 
   # Extract JSON values
@@ -621,12 +614,6 @@ default.
   $msg = $msg->parse('HTTP/1.1 200 OK...');
 
 Parse message chunk.
-
-=head2 save_to
-
-  $msg = $msg->save_to('/some/path/index.html');
-
-Save message body to a file.
 
 =head2 start_line_size
 
@@ -673,6 +660,6 @@ All C<multipart/form-data> file uploads, usually L<Mojo::Upload> objects.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

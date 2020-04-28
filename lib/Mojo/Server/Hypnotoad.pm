@@ -4,20 +4,20 @@ use Mojo::Base -base;
 # "Bender: I was God once.
 #  God: Yes, I saw. You were doing well, until everyone died."
 use Config;
-use Mojo::File qw(path);
+use Mojo::File 'path';
 use Mojo::Server::Prefork;
-use Mojo::Util qw(steady_time);
-use Scalar::Util qw(weaken);
+use Mojo::Util 'steady_time';
+use Scalar::Util 'weaken';
 
 has prefork => sub { Mojo::Server::Prefork->new(listen => ['http://*:8080']) };
-has upgrade_timeout => 180;
+has upgrade_timeout => 60;
 
 sub configure {
   my ($self, $name) = @_;
 
   # Hypnotoad settings
   my $prefork = $self->prefork;
-  my $c       = $prefork->app->config($name) || {};
+  my $c = $prefork->app->config($name) || {};
   $self->upgrade_timeout($c->{upgrade_timeout}) if $c->{upgrade_timeout};
 
   # Pre-fork settings
@@ -26,7 +26,7 @@ sub configure {
   $prefork->max_requests($c->{requests}) if $c->{requests};
   defined $c->{$_} and $prefork->$_($c->{$_})
     for qw(accepts backlog graceful_timeout heartbeat_interval),
-    qw(heartbeat_timeout inactivity_timeout listen pid_file spare workers);
+    qw(heartbeat_timeout inactivity_timeout listen pid_file workers);
 }
 
 sub run {
@@ -66,11 +66,11 @@ sub run {
   $self->_hot_deploy unless $ENV{HYPNOTOAD_PID};
 
   # Daemonize as early as possible (but not for restarts)
-  local $SIG{USR2} = sub { $self->{upgrade} ||= steady_time };
   $prefork->start;
   $prefork->daemonize if !$ENV{HYPNOTOAD_FOREGROUND} && $ENV{HYPNOTOAD_REV} < 3;
 
   # Start accepting connections
+  local $SIG{USR2} = sub { $self->{upgrade} ||= steady_time };
   $prefork->cleanup(1)->run;
 }
 
@@ -92,7 +92,7 @@ sub _finish {
   return unless my $new = $self->{new};
 
   my $prefork = $self->prefork->cleanup(0);
-  path($prefork->pid_file)->remove;
+  unlink $prefork->pid_file;
   $prefork->ensure_pid_file($new);
 }
 
@@ -123,15 +123,15 @@ sub _manage {
   if ($self->{upgrade} && !$self->{finished}) {
 
     # Fresh start
-    my $ut = $self->upgrade_timeout;
     unless ($self->{new}) {
-      $log->info("Starting zero downtime software upgrade ($ut seconds)");
+      $log->info('Starting zero downtime software upgrade');
       die "Can't fork: $!" unless defined(my $pid = $self->{new} = fork);
       exec $^X, $ENV{HYPNOTOAD_EXE} or die "Can't exec: $!" unless $pid;
     }
 
     # Timeout
-    kill 'KILL', $self->{new} if $self->{upgrade} + $ut <= steady_time;
+    kill 'KILL', $self->{new}
+      if $self->{upgrade} + $self->upgrade_timeout <= steady_time;
   }
 }
 
@@ -184,7 +184,7 @@ file with it, and send a L</"USR2"> signal to the already running server.
 For better scalability (epoll, kqueue) and to provide non-blocking name
 resolution, SOCKS5 as well as TLS support, the optional modules L<EV> (4.0+),
 L<Net::DNS::Native> (0.15+), L<IO::Socket::Socks> (0.64+) and
-L<IO::Socket::SSL> (2.009+) will be used automatically if possible. Individual
+L<IO::Socket::SSL> (1.94+) will be used automatically if possible. Individual
 features can also be disabled with the C<MOJO_NO_NNR>, C<MOJO_NO_SOCKS> and
 C<MOJO_NO_TLS> environment variables.
 
@@ -338,21 +338,12 @@ value of L<Mojo::Server/"reverse_proxy">.
 Number of keep-alive requests per connection, defaults to the value of
 L<Mojo::Server::Daemon/"max_requests">.
 
-=head2 spare
-
-  spare => 4
-
-Temporarily spawn up to this number of additional workers if there is a need,
-defaults to the value of L<Mojo::Server::Prefork/"spare">. This allows for new
-workers to be started while old ones are still shutting down gracefully,
-drastically reducing the performance cost of worker restarts.
-
 =head2 upgrade_timeout
 
   upgrade_timeout => 45
 
 Maximum amount of time in seconds a zero downtime software upgrade may take
-before getting canceled, defaults to C<180>.
+before getting canceled, defaults to C<60>.
 
 =head2 workers
 
@@ -383,7 +374,7 @@ L<Mojo::Server::Prefork> object this server manages.
   $hypnotoad  = $hypnotoad->upgrade_timeout(15);
 
 Maximum amount of time in seconds a zero downtime software upgrade may take
-before getting canceled, defaults to C<180>.
+before getting canceled, defaults to C<60>.
 
 =head1 METHODS
 
@@ -404,6 +395,6 @@ Run server for application and wait for L</"MANAGER SIGNALS">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

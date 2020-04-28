@@ -5,7 +5,7 @@ use Mojo::Util;
 
 has [qw(endpoint root)];
 has position => 0;
-has stack    => sub { [] };
+has stack => sub { [] };
 
 sub find { $_[0]->_match($_[0]->root, $_[1], $_[2]) }
 
@@ -84,10 +84,10 @@ sub _match {
   }
 
   # Match children
-  my $snapshot = $r->parent ? [@{$self->stack}] : [];
+  my @snapshot = $r->parent ? ([@{$self->stack}], $captures) : ([], {});
   for my $child (@{$r->children}) {
     return 1 if $self->_match($child, $c, $options);
-    $self->stack([@$snapshot]);
+    $self->stack([@{$snapshot[0]}])->{captures} = $snapshot[1];
   }
 }
 
@@ -184,6 +184,6 @@ Render matching route with parameters into path.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

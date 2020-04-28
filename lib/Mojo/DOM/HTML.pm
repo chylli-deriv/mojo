@@ -1,11 +1,8 @@
 package Mojo::DOM::HTML;
 use Mojo::Base -base;
 
-use Exporter qw(import);
 use Mojo::Util qw(html_attr_unescape html_unescape xml_escape);
-use Scalar::Util qw(weaken);
-
-our @EXPORT_OK = ('tag_to_html');
+use Scalar::Util 'weaken';
 
 has tree => sub { ['root'] };
 has 'xml';
@@ -54,9 +51,8 @@ my %END = (body => 'head', optgroup => 'optgroup', option => 'option');
 
 # HTML elements that break paragraphs
 map { $END{$_} = 'p' } (
-  qw(address article aside blockquote details dialog div dl fieldset),
-  qw(figcaption figure footer form h1 h2 h3 h4 h5 h6 header hgroup hr main),
-  qw(menu nav ol p pre section table ul)
+  qw(address article aside blockquote dir div dl fieldset footer form h1 h2),
+  qw(h3 h4 h5 h6 header hr main menu nav ol p pre section table ul)
 );
 
 # HTML table elements with optional end tags
@@ -66,8 +62,8 @@ my %TABLE = map { $_ => 1 } qw(colgroup tbody td tfoot th thead tr);
 my %CLOSE
   = (li => [{li => 1}, {ul => 1, ol => 1}], tr => [{tr => 1}, {table => 1}]);
 $CLOSE{$_} = [\%TABLE, {table => 1}] for qw(colgroup tbody tfoot thead);
-$CLOSE{$_} = [{dd => 1, dt => 1}, {dl => 1}] for qw(dd dt);
-$CLOSE{$_} = [{rp => 1, rt => 1}, {ruby => 1}] for qw(rp rt);
+$CLOSE{$_} = [{dd => 1, dt => 1}, {dl    => 1}] for qw(dd dt);
+$CLOSE{$_} = [{rp => 1, rt => 1}, {ruby  => 1}] for qw(rp rt);
 $CLOSE{$_} = [{th => 1, td => 1}, {table => 1}] for qw(td th);
 
 # HTML elements without end tags
@@ -101,7 +97,7 @@ my %BLOCK = map { $_ => 1 } (
 sub parse {
   my ($self, $html) = (shift, "$_[0]");
 
-  my $xml     = $self->xml;
+  my $xml = $self->xml;
   my $current = my $tree = ['root'];
   while ($html =~ /\G$TOKEN_RE/gcso) {
     my ($text, $doctype, $comment, $cdata, $pi, $tag, $runaway)
@@ -169,10 +165,6 @@ sub parse {
 
 sub render { _render($_[0]->tree, $_[0]->xml) }
 
-sub tag { shift->tree(['root', _tag(@_)]) }
-
-sub tag_to_html { _render(_tag(@_), undef) }
-
 sub _end {
   my ($end, $xml, $current) = @_;
 
@@ -201,43 +193,12 @@ sub _node {
 sub _render {
   my ($tree, $xml) = @_;
 
-  # Tag
-  my $type = $tree->[0];
-  if ($type eq 'tag') {
-
-    # Start tag
-    my $tag    = $tree->[1];
-    my $result = "<$tag";
-
-    # Attributes
-    for my $key (sort keys %{$tree->[2]}) {
-      my $value = $tree->[2]{$key};
-      $result .= $xml ? qq{ $key="$key"} : " $key" and next
-        unless defined $value;
-      $result .= qq{ $key="} . xml_escape($value) . '"';
-    }
-
-    # No children
-    return $xml ? "$result />" : $EMPTY{$tag} ? "$result>" : "$result></$tag>"
-      unless $tree->[4];
-
-    # Children
-    no warnings 'recursion';
-    $result .= '>' . join '', map { _render($_, $xml) } @$tree[4 .. $#$tree];
-
-    # End tag
-    return "$result</$tag>";
-  }
-
   # Text (escaped)
+  my $type = $tree->[0];
   return xml_escape $tree->[1] if $type eq 'text';
 
   # Raw text
   return $tree->[1] if $type eq 'raw';
-
-  # Root
-  return join '', map { _render($_, $xml) } @$tree[1 .. $#$tree]
-    if $type eq 'root';
 
   # DOCTYPE
   return '<!DOCTYPE' . $tree->[1] . '>' if $type eq 'doctype';
@@ -251,8 +212,31 @@ sub _render {
   # Processing instruction
   return '<?' . $tree->[1] . '?>' if $type eq 'pi';
 
-  # Everything else
-  return '';
+  # Root
+  return join '', map { _render($_, $xml) } @$tree[1 .. $#$tree]
+    if $type eq 'root';
+
+  # Start tag
+  my $tag    = $tree->[1];
+  my $result = "<$tag";
+
+  # Attributes
+  for my $key (sort keys %{$tree->[2]}) {
+    my $value = $tree->[2]{$key};
+    $result .= $xml ? qq{ $key="$key"} : " $key" and next unless defined $value;
+    $result .= qq{ $key="} . xml_escape($value) . '"';
+  }
+
+  # No children
+  return $xml ? "$result />" : $EMPTY{$tag} ? "$result>" : "$result></$tag>"
+    unless $tree->[4];
+
+  # Children
+  no warnings 'recursion';
+  $result .= '>' . join '', map { _render($_, $xml) } @$tree[4 .. $#$tree];
+
+  # End tag
+  return "$result</$tag>";
 }
 
 sub _start {
@@ -280,21 +264,6 @@ sub _start {
   $$current = $new;
 }
 
-sub _tag {
-  my $tree = ['tag', shift, undef, undef];
-
-  # Content
-  push @$tree, ref $_[-1] eq 'CODE' ? ['raw', pop->()] : ['text', pop]
-    if @_ % 2;
-
-  # Attributes
-  my $attrs = $tree->[2] = {@_};
-  return $tree unless exists $attrs->{data} && ref $attrs->{data} eq 'HASH';
-  my $data = delete $attrs->{data};
-  @$attrs{map { y/_/-/; lc "data-$_" } keys %$data} = values %$data;
-  return $tree;
-}
-
 1;
 
 =encoding utf8
@@ -317,19 +286,6 @@ Mojo::DOM::HTML - HTML/XML engine
 L<Mojo::DOM::HTML> is the HTML/XML engine used by L<Mojo::DOM>, based on the
 L<HTML Living Standard|https://html.spec.whatwg.org> and the
 L<Extensible Markup Language (XML) 1.0|http://www.w3.org/TR/xml/>.
-
-=head1 FUNCTIONS
-
-L<Mojo::DOM::HTML> implements the following functions, which can be imported
-individually.
-
-=head2 tag_to_html
-
-  my $str = tag_to_html 'div', id => 'foo', 'safe content';
-
-Generate HTML/XML tag and render it right away. This is a significantly faster
-alternative to L</"tag"> for template systems that have to generate a lot of
-tags.
 
 =head1 ATTRIBUTES
 
@@ -368,14 +324,8 @@ Parse HTML/XML fragment.
 
 Render DOM to HTML/XML.
 
-=head2 tag
-
-  $html = $html->tag('div', id => 'foo', 'safe content');
-
-Generate HTML/XML tag.
-
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

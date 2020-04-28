@@ -6,8 +6,8 @@ use Test::More;
 use Mojo::IOLoop::TLS;
 
 plan skip_all => 'set TEST_TLS to enable this test (developer only!)'
-  unless $ENV{TEST_TLS} || $ENV{TEST_ALL};
-plan skip_all => 'IO::Socket::SSL 2.009+ required for this test!'
+  unless $ENV{TEST_TLS};
+plan skip_all => 'IO::Socket::SSL 1.94+ required for this test!'
   unless Mojo::IOLoop::TLS->can_tls;
 
 use Mojo::IOLoop;
@@ -22,14 +22,14 @@ app->log->level('fatal');
 app->sessions->secure(1);
 
 get '/login' => sub {
-  my $c    = shift;
+  my $c = shift;
   my $name = $c->param('name') || 'anonymous';
   $c->session(name => $name);
   $c->render(text => "Welcome $name!");
 };
 
 get '/again' => sub {
-  my $c    = shift;
+  my $c = shift;
   my $name = $c->session('name') || 'anonymous';
   $c->render(text => "Welcome back $name!");
 };

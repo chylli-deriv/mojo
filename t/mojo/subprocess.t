@@ -5,17 +5,14 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Test::More;
 
 plan skip_all => 'set TEST_SUBPROCESS to enable this test (developer only!)'
-  unless $ENV{TEST_SUBPROCESS} || $ENV{TEST_ALL};
+  unless $ENV{TEST_SUBPROCESS};
 
 use Mojo::IOLoop;
 use Mojo::IOLoop::Subprocess;
-use Mojo::Promise;
-use Mojo::File qw(tempfile);
 
 # Huge result
-my ($fail, $result, @start);
+my ($fail, $result);
 my $subprocess = Mojo::IOLoop::Subprocess->new;
-$subprocess->on(spawn => sub { push @start, shift->pid });
 $subprocess->run(
   sub { shift->pid . $$ . ('x' x 100000) },
   sub {
@@ -25,12 +22,9 @@ $subprocess->run(
   }
 );
 $result = $$;
-ok !$subprocess->pid, 'no process id available yet';
 Mojo::IOLoop->start;
-ok $subprocess->pid, 'process id available';
 ok !$fail, 'no error';
 is $result, $$ . 0 . $subprocess->pid . ('x' x 100000), 'right result';
-is_deeply \@start, [$subprocess->pid], 'spawn event has been emitted once';
 
 # Custom event loop
 ($fail, $result) = ();
@@ -82,40 +76,17 @@ Mojo::IOLoop->start;
 ok !$fail, 'no error';
 is $result, 23, 'right result';
 
-# Event loop in subprocess (already running event loop)
-($fail, $result) = ();
-Mojo::IOLoop->next_tick(sub {
-  Mojo::IOLoop->subprocess(
-    sub {
-      my $result;
-      my $promise = Mojo::Promise->new;
-      $promise->then(sub { $result = shift });
-      Mojo::IOLoop->next_tick(sub { $promise->resolve(25) });
-      $promise->wait;
-      return $result;
-    },
-    sub {
-      my ($subprocess, $err, $twenty_five) = @_;
-      $fail   = $err;
-      $result = $twenty_five;
-    }
-  );
-});
-Mojo::IOLoop->start;
-ok !$fail, 'no error';
-is $result, 25, 'right result';
-
 # Concurrent subprocesses
 ($fail, $result) = ();
 Mojo::IOLoop->delay(
   sub {
     my $delay = shift;
     Mojo::IOLoop->subprocess(sub {1}, $delay->begin);
-    Mojo::IOLoop->subprocess->run(sub {2}, $delay->begin);
+    Mojo::IOLoop->subprocess(sub {2}, $delay->begin);
   },
   sub {
     my ($delay, $err1, $result1, $err2, $result2) = @_;
-    $fail   = $err1 || $err2;
+    $fail = $err1 || $err2;
     $result = [$result1, $result2];
   }
 )->wait;
@@ -195,57 +166,5 @@ $subprocess->run(
 );
 Mojo::IOLoop->start;
 like $fail, qr/Whatever/, 'right error';
-
-# Progress
-($fail, $result) = (undef, undef);
-my @progress;
-$subprocess = Mojo::IOLoop::Subprocess->new;
-$subprocess->run(
-  sub {
-    my $s = shift;
-    $s->progress(20);
-    $s->progress({percentage => 45});
-    $s->progress({percentage => 90}, {long_data => [1 .. 1e5]});
-    'yay';
-  },
-  sub {
-    my ($subprocess, $err, @res) = @_;
-    $fail   = $err;
-    $result = \@res;
-  }
-);
-$subprocess->on(
-  progress => sub {
-    my ($subprocess, @args) = @_;
-    push @progress, \@args;
-  }
-);
-Mojo::IOLoop->start;
-ok !$fail, 'no error';
-is_deeply $result, ['yay'], 'correct result';
-is_deeply \@progress,
-  [[20], [{percentage => 45}], [{percentage => 90}, {long_data => [1 .. 1e5]}]],
-  'correct progress';
-
-# Cleanup
-($fail, $result) = ();
-my $file   = tempfile;
-my $called = 0;
-$subprocess = Mojo::IOLoop::Subprocess->new;
-$subprocess->on(
-  cleanup => sub { $file->spurt(shift->serialize->({test => ++$called})) });
-$subprocess->run(
-  sub {'Hello Mojo!'},
-  sub {
-    my ($subprocess, $err, $hello) = @_;
-    $fail   = $err;
-    $result = $hello;
-  }
-);
-Mojo::IOLoop->start;
-is_deeply $subprocess->deserialize->($file->slurp), {test => 1},
-  'cleanup event emitted once';
-ok !$fail, 'no error';
-is $result, 'Hello Mojo!', 'right result';
 
 done_testing();

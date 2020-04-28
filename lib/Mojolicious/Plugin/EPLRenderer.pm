@@ -15,19 +15,19 @@ sub _render {
 
   # Cached
   if ($mt->compiled) {
-    $c->helpers->log->debug("Rendering cached @{[$mt->name]}");
+    $c->app->log->debug("Rendering cached @{[$mt->name]}");
     $$output = $mt->process(@args);
   }
 
   # Not cached
   else {
     my $inline = $options->{inline};
-    my $name   = defined $inline ? md5_sum encode('UTF-8', $inline) : undef;
+    my $name = defined $inline ? md5_sum encode('UTF-8', $inline) : undef;
     return unless defined($name //= $renderer->template_name($options));
 
     # Inline
     if (defined $inline) {
-      $c->helpers->log->debug(qq{Rendering inline template "$name"});
+      $c->app->log->debug(qq{Rendering inline template "$name"});
       $$output = $mt->name(qq{inline template "$name"})->render($inline, @args);
     }
 
@@ -37,20 +37,19 @@ sub _render {
 
       # Try template
       if (defined(my $path = $renderer->template_path($options))) {
-        $c->helpers->log->debug(qq{Rendering template "$name"});
+        $c->app->log->debug(qq{Rendering template "$name"});
         $$output = $mt->name(qq{template "$name"})->render_file($path, @args);
       }
 
       # Try DATA section
       elsif (defined(my $d = $renderer->get_data_template($options))) {
-        $c->helpers->log->debug(
-          qq{Rendering template "$name" from DATA section});
+        $c->app->log->debug(qq{Rendering template "$name" from DATA section});
         $$output = $mt->name(qq{template "$name" from DATA section})
           ->render($d, @args);
       }
 
       # No template
-      else { $c->helpers->log->debug(qq{Template "$name" not found}) }
+      else { $c->app->log->debug(qq{Template "$name" not found}) }
     }
   }
 
@@ -98,6 +97,6 @@ Register renderer in L<Mojolicious> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

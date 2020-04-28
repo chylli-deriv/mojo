@@ -87,13 +87,7 @@ sub path {
 }
 
 sub path_query {
-  my ($self, $pq) = @_;
-
-  if (defined $pq) {
-    return $self unless $pq =~ /^([^?#]*)(?:\?([^#]*))?/;
-    return defined $2 ? $self->path($1)->query($2) : $self->path($1);
-  }
-
+  my $self  = shift;
   my $query = $self->query->to_string;
   return $self->path->to_string . (length $query ? "?$query" : '');
 }
@@ -110,11 +104,11 @@ sub query {
   # Replace with list
   if (@_ > 1) { $q->pairs([])->parse(@_) }
 
-  # Merge with hash
-  elsif (ref $_[0] eq 'HASH') { $q->merge(%{$_[0]}) }
+  # Merge with array
+  elsif (ref $_[0] eq 'ARRAY') { $q->merge(@{$_[0]}) }
 
-  # Append array
-  elsif (ref $_[0] eq 'ARRAY') { $q->append(@{$_[0]}) }
+  # Append hash
+  elsif (ref $_[0] eq 'HASH') { $q->append(%{$_[0]}) }
 
   # New parameters
   else { $self->{query} = ref $_[0] ? $_[0] : $q->parse($_[0]) }
@@ -300,7 +294,7 @@ following new ones.
 
   my $url2 = $url->clone;
 
-Return a new L<Mojo::URL> object cloned from this URL.
+Clone this URL.
 
 =head2 host_port
 
@@ -405,7 +399,6 @@ L<Mojo::Path/"merge">, defaults to a L<Mojo::Path> object.
 =head2 path_query
 
   my $path_query = $url->path_query;
-  $url           = $url->path_query('/foo/bar?a=1&b=2');
 
 Normalized version of L</"path"> and L</"query">.
 
@@ -427,15 +420,15 @@ Normalized version of L</"scheme">.
 =head2 query
 
   my $query = $url->query;
-  $url      = $url->query({merge => 'to'});
-  $url      = $url->query([append => 'with']);
+  $url      = $url->query([merge => 'with']);
+  $url      = $url->query({append => 'to'});
   $url      = $url->query(replace => 'with');
   $url      = $url->query('a=1&b=2');
   $url      = $url->query(Mojo::Parameters->new);
 
-Query part of this URL, key/value pairs in an array reference will be appended
-with L<Mojo::Parameters/"append">, and key/value pairs in a hash reference
-merged with L<Mojo::Parameters/"merge">, defaults to a L<Mojo::Parameters>
+Query part of this URL, key/value pairs in an array reference will be merged
+with L<Mojo::Parameters/"merge">, and key/value pairs in a hash reference
+appended with L<Mojo::Parameters/"append">, defaults to a L<Mojo::Parameters>
 object.
 
   # "2"
@@ -451,21 +444,21 @@ object.
   Mojo::URL->new('http://example.com?a=1&b=2')->query(a => [2, 3]);
 
   # "http://example.com?a=2&b=2&c=3"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => 2, c => 3});
+  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => 2, c => 3]);
 
   # "http://example.com?b=2"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => undef});
+  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => undef]);
 
   # "http://example.com?a=1&b=2&a=2&c=3"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => 2, c => 3]);
+  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => 2, c => 3});
 
 =head2 to_abs
 
   my $abs = $url->to_abs;
   my $abs = $url->to_abs(Mojo::URL->new('http://example.com/foo'));
 
-Return a new L<Mojo::URL> object cloned from this relative URL and turn it into
-an absolute one using L</"base"> or provided base URL.
+Clone relative URL and turn it into an absolute one using L</"base"> or
+provided base URL.
 
   # "http://example.com/foo/baz.xml?test=123"
   Mojo::URL->new('baz.xml?test=123')
@@ -528,6 +521,6 @@ Alias for L</"to_string">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

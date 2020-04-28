@@ -1,7 +1,8 @@
 use Mojo::Base -strict;
 
 use Test::More;
-use Mojo::ByteStream qw(b);
+use FindBin;
+use Mojo::ByteStream 'b';
 
 # Tap into method chain
 is b('test')->tap(sub { $$_ .= '1' })->camelize, 'Test1', 'right result';
@@ -97,10 +98,6 @@ ok !ref $stream->to_string, 'nested bytestream stringified';
 $stream = b('1,2,3,4,5');
 is_deeply $stream->split(',')->to_array,   [1, 2, 3, 4, 5], 'right elements';
 is_deeply $stream->split(qr/,/)->to_array, [1, 2, 3, 4, 5], 'right elements';
-is_deeply b('1,2,3,4,5,,,')->split(',')->to_array, [1, 2, 3, 4, 5],
-  'right elements';
-is_deeply b('1,2,3,4,5,,,')->split(',', -1)->to_array,
-  [1, 2, 3, 4, 5, '', '', ''], 'right elements';
 is_deeply b('54321')->split('')->to_array, [5, 4, 3, 2, 1], 'right elements';
 is_deeply b('')->split('')->to_array,    [], 'no elements';
 is_deeply b('')->split(',')->to_array,   [], 'no elements';
@@ -137,22 +134,5 @@ is $buffer, "test\n123\n\"123\"\n", 'right output';
 
 # term_escape
 is b("\t\b\r\n\f")->term_escape, "\\x09\\x08\\x0d\n\\x0c", 'right result';
-
-# slugify
-is b("Un \x{e9}l\x{e9}phant \x{e0} l'or\x{e9}e du bois")->slugify->to_string,
-  'un-elephant-a-loree-du-bois', 'right result';
-is b("Un \x{e9}l\x{e9}phant \x{e0} l'or\x{e9}e du bois")->slugify(1)->to_string,
-  "un-\x{e9}l\x{e9}phant-\x{e0}-lor\x{e9}e-du-bois", 'right result';
-
-# gzip/gunzip
-my $uncompressed = b('a' x 1000);
-my $compressed   = $uncompressed->clone->gzip;
-isnt $compressed->to_string, $uncompressed->to_string, 'bytestream changed';
-ok $compressed->size < $uncompressed->size, 'bytestream is shorter';
-is $compressed->gunzip->to_string, $uncompressed->to_string, 'same bytestream';
-
-# humanize_bytes
-is b(8007188480)->humanize_bytes,  '7.5GiB',  'humanized';
-is b(-8007188480)->humanize_bytes, '-7.5GiB', 'humanized';
 
 done_testing();

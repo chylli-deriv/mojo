@@ -150,7 +150,6 @@ organized CPAN distribution to maximize maintainability.
   |  +- MyApp                # Application namespace
   |     +- Controller        # Controller namespace
   |        +- Example.pm     # Controller class
-  |- my_app.conf             # Configuration file
   |- t                       # Test directory
   |  +- basic.t              # Random test
   |- log                     # Log directory
@@ -164,8 +163,8 @@ organized CPAN distribution to maximize maintainability.
         +- welcome.html.ep   # Template for "welcome" action
 
 Both application skeletons can be automatically generated with the commands
-L<Mojolicious::Command::Author::generate::lite_app> and
-L<Mojolicious::Command::Author::generate::app>.
+L<Mojolicious::Command::generate::lite_app> and
+L<Mojolicious::Command::generate::app>.
 
   $ mojo generate lite_app myapp.pl
   $ mojo generate app MyApp
@@ -267,7 +266,7 @@ separation of concerns more visible.
   use strict;
   use warnings;
 
-  use Mojo::Util qw(secure_compare);
+  use Mojo::Util 'secure_compare';
 
   my $USERS = {
     joel      => 'las3rs',
@@ -296,7 +295,7 @@ templates.
   #!/usr/bin/env perl
   use Mojolicious::Lite;
 
-  use lib qw(lib);
+  use lib 'lib';
   use MyApp::Model::Users;
 
   # Helper to lazy initialize and store our model object
@@ -341,8 +340,8 @@ L<Mojo::DOM>.
   use Test::Mojo;
 
   # Include application
-  use Mojo::File qw(curfile);
-  require(curfile->dirname->sibling('myapp.pl'));
+  use FindBin;
+  require "$FindBin::Bin/../myapp.pl";
 
   # Allow 302 redirect responses
   my $t = Test::Mojo->new;
@@ -357,15 +356,13 @@ L<Mojo::DOM>.
 
   # Test login with valid credentials
   $t->post_ok('/' => form => {user => 'sebastian', pass => 'secr3t'})
-    ->status_is(200)
-    ->text_like('html body' => qr/Welcome sebastian/);
+    ->status_is(200)->text_like('html body' => qr/Welcome sebastian/);
 
   # Test accessing a protected page
   $t->get_ok('/protected')->status_is(200)->text_like('a' => qr/Logout/);
 
   # Test if HTML login form shows up again after logout
-  $t->get_ok('/logout')
-    ->status_is(200)
+  $t->get_ok('/logout')->status_is(200)
     ->element_exists('form input[name="user"]')
     ->element_exists('form input[name="pass"]')
     ->element_exists('form input[type="submit"]');
@@ -373,11 +370,11 @@ L<Mojo::DOM>.
   done_testing();
 
 Your application won't pass these tests, but from now on you can use them to
-check your progress.
+check your progress with the command L<Mojolicious::Command::test>.
 
-  $ prove -l
-  $ prove -l t/login.t
-  $ prove -l -v t/login.t
+  $ ./myapp.pl test
+  $ ./myapp.pl test t/login.t
+  $ ./myapp.pl test -v t/login.t
 
 Or perform quick requests right from the command line with
 L<Mojolicious::Command::get>.
@@ -427,14 +424,14 @@ set an absolute expiration date in the past.
 
 For data that should only be visible on the next request, like a confirmation
 message after a C<302> redirect performed with
-L<Mojolicious::Plugin::DefaultHelpers/"redirect_to">, you can use the flash,
-accessible through L<Mojolicious::Plugin::DefaultHelpers/"flash">.
+L<Mojolicious::Controller/"redirect_to">, you can use the flash, accessible
+through the method L<Mojolicious::Controller/"flash">.
 
   $c->flash(message => 'Everything is fine.');
   $c->redirect_to('goodbye');
 
 Just remember that all session data gets serialized with L<Mojo::JSON> and
-stored in HMAC-SHA1 signed cookies, which usually have a C<4096> byte (4KiB)
+stored in HMAC-SHA1 signed cookies, which usually have a C<4096> byte (4KB)
 limit, depending on browser.
 
 =head2 Final prototype
@@ -445,7 +442,7 @@ this.
   #!/usr/bin/env perl
   use Mojolicious::Lite;
 
-  use lib qw(lib);
+  use lib 'lib';
   use MyApp::Model::Users;
 
   # Make signed cookies tamper resistant
@@ -556,7 +553,7 @@ possibilities.
 
 All templates and static files inlined in the C<DATA> section can be
 automatically turned into separate files in the C<templates> and C<public>
-directories with the command L<Mojolicious::Command::Author::inflate>.
+directories with the command L<Mojolicious::Command::inflate>.
 
   $ ./myapp.pl inflate
 
@@ -631,7 +628,7 @@ allow running tests again.
   use strict;
   use warnings;
 
-  use lib qw(lib);
+  use lib 'lib';
   use Mojolicious::Commands;
 
   # Start command line interface for application
@@ -747,17 +744,16 @@ C<my_app> to follow the CPAN standard.
   $ mkdir script
   $ mv myapp.pl script/my_app
 
-Just a few small details change, instead of a relative path to L<lib> we now
-use L<Mojo::File> to get an absolute path, allowing us to start the application
-from outside its home directory.
+Just a few small details change, instead of L<lib> we now use L<FindBin> and
+C<@INC>, allowing us to start the application from outside its home directory.
 
   #!/usr/bin/env perl
 
   use strict;
   use warnings;
 
-  use Mojo::File qw(curfile);
-  use lib curfile->dirname->sibling('lib')->to_string;
+  use FindBin;
+  BEGIN { unshift @INC, "$FindBin::Bin/../lib" }
   use Mojolicious::Commands;
 
   # Start command line interface for application
@@ -782,13 +778,11 @@ can be simplified.
     ->element_exists('form input[type="submit"]');
 
   $t->post_ok('/' => form => {user => 'sebastian', pass => 'secr3t'})
-    ->status_is(200)
-    ->text_like('html body' => qr/Welcome sebastian/);
+    ->status_is(200)->text_like('html body' => qr/Welcome sebastian/);
 
   $t->get_ok('/protected')->status_is(200)->text_like('a' => qr/Logout/);
 
-  $t->get_ok('/logout')
-    ->status_is(200)
+  $t->get_ok('/logout')->status_is(200)
     ->element_exists('form input[name="user"]')
     ->element_exists('form input[name="pass"]')
     ->element_exists('form input[type="submit"]');
@@ -822,15 +816,15 @@ powerful tool.
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

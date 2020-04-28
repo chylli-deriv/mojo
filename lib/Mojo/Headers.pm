@@ -1,8 +1,7 @@
 package Mojo::Headers;
 use Mojo::Base -base;
 
-use Carp qw(croak);
-use Mojo::Util qw(monkey_patch);
+use Mojo::Util 'monkey_patch';
 
 has max_line_size => sub { $ENV{MOJO_MAX_LINE_SIZE} || 8192 };
 has max_lines     => sub { $ENV{MOJO_MAX_LINES}     || 100 };
@@ -17,8 +16,8 @@ my %NAMES = map { lc() => $_ } (
   qw(Last-Modified Link Location Origin Proxy-Authenticate),
   qw(Proxy-Authorization Range Sec-WebSocket-Accept Sec-WebSocket-Extensions),
   qw(Sec-WebSocket-Key Sec-WebSocket-Protocol Sec-WebSocket-Version Server),
-  qw(Server-Timing Set-Cookie Status Strict-Transport-Security TE Trailer),
-  qw(Transfer-Encoding Upgrade User-Agent Vary WWW-Authenticate)
+  qw(Set-Cookie Status Strict-Transport-Security TE Trailer Transfer-Encoding),
+  qw(Upgrade User-Agent Vary WWW-Authenticate)
 );
 for my $header (keys %NAMES) {
   my $name = $header;
@@ -31,16 +30,8 @@ for my $header (keys %NAMES) {
   };
 }
 
-# Hop-by-hop headers
-my @HOP_BY_HOP = map {lc} (
-  qw(Connection Keep-Alive Proxy-Authenticate Proxy-Authorization TE Trailer),
-  qw(Transfer-Encoding Upgrade)
-);
-
 sub add {
   my ($self, $name) = (shift, shift);
-
-  tr/\x0d\x0a// and croak "Invalid characters in $name header" for @_;
 
   # Make sure we have a normal case entry for name
   my $key = lc $name;
@@ -56,22 +47,7 @@ sub append {
   return $self->header($name => defined $old ? "$old, $value" : $value);
 }
 
-sub clone {
-  my $self = shift;
-
-  my $clone = $self->new;
-  %{$clone->{names}} = %{$self->{names} // {}};
-  @{$clone->{headers}{$_}} = @{$self->{headers}{$_}}
-    for keys %{$self->{headers}};
-
-  return $clone;
-}
-
-sub dehop {
-  my $self = shift;
-  delete @{$self->{headers}}{@HOP_BY_HOP};
-  return $self;
-}
+sub clone { $_[0]->new->from_hash($_[0]->to_hash(1)) }
 
 sub every_header { shift->{headers}{lc shift} || [] }
 
@@ -215,7 +191,7 @@ L<Mojo::Headers> implements the following attributes.
   $headers = $headers->max_line_size(1024);
 
 Maximum header line size in bytes, defaults to the value of the
-C<MOJO_MAX_LINE_SIZE> environment variable or C<8192> (8KiB).
+C<MOJO_MAX_LINE_SIZE> environment variable or C<8192> (8KB).
 
 =head2 max_lines
 
@@ -322,7 +298,7 @@ Get or replace current header value, shortcut for the C<Cache-Control> header.
 
   my $clone = $headers->clone;
 
-Return a new L<Mojo::Headers> object cloned from these headers.
+Clone headers.
 
 =head2 connection
 
@@ -406,12 +382,6 @@ L<RFC 6265|http://tools.ietf.org/html/rfc6265>.
   $headers = $headers->date('Sun, 17 Aug 2008 16:27:35 GMT');
 
 Get or replace current header value, shortcut for the C<Date> header.
-
-=head2 dehop
-
-  $headers = $headers->dehop;
-
-Remove hop-by-hop headers that should not be retransmitted.
 
 =head2 dnt
 
@@ -639,14 +609,6 @@ header from L<RFC 6455|http://tools.ietf.org/html/rfc6455>.
 
 Get or replace current header value, shortcut for the C<Server> header.
 
-=head2 server_timing
-
-  my $timing = $headers->server_timing;
-  $headers   = $headers->server_timing('app;desc=Mojolicious;dur=0.0001');
-
-Get or replace current header value, shortcut for the C<Server-Timing> header
-from L<Server Timing|https://www.w3.org/TR/server-timing/>.
-
 =head2 set_cookie
 
   my $cookie = $headers->set_cookie;
@@ -741,6 +703,6 @@ header.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

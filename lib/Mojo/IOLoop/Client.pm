@@ -1,28 +1,28 @@
 package Mojo::IOLoop::Client;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Errno qw(EINPROGRESS);
+use Errno 'EINPROGRESS';
 use IO::Socket::IP;
 use IO::Socket::UNIX;
 use Mojo::IOLoop;
 use Mojo::IOLoop::TLS;
-use Scalar::Util qw(weaken);
+use Scalar::Util 'weaken';
 use Socket qw(IPPROTO_TCP SOCK_STREAM TCP_NODELAY);
 
 # Non-blocking name resolution requires Net::DNS::Native
 use constant NNR => $ENV{MOJO_NO_NNR}
   ? 0
-  : eval { require Net::DNS::Native; Net::DNS::Native->VERSION('0.15'); 1 };
-my $NDN;
+  : eval 'use Net::DNS::Native 0.15 (); 1';
+my $NDN = NNR ? Net::DNS::Native->new(pool => 5, extra_thread => 1) : undef;
 
 # SOCKS support requires IO::Socket::Socks
 use constant SOCKS => $ENV{MOJO_NO_SOCKS}
   ? 0
-  : eval { require IO::Socket::Socks; IO::Socket::Socks->VERSION('0.64'); 1 };
+  : eval 'use IO::Socket::Socks 0.64 (); 1';
 use constant READ  => SOCKS ? IO::Socket::Socks::SOCKS_WANT_READ()  : 0;
 use constant WRITE => SOCKS ? IO::Socket::Socks::SOCKS_WANT_WRITE() : 0;
 
-has reactor => sub { Mojo::IOLoop->singleton->reactor }, weak => 1;
+has reactor => sub { Mojo::IOLoop->singleton->reactor };
 
 sub DESTROY { shift->_cleanup }
 
@@ -45,7 +45,6 @@ sub connect {
     if !NNR || $args->{handle} || $args->{path};
 
   # Non-blocking name resolution
-  $NDN //= Net::DNS::Native->new(pool => 5, extra_thread => 1);
   my $handle = $self->{dns} = $NDN->getaddrinfo($address, _port($args),
     {protocol => IPPROTO_TCP, socktype => SOCK_STREAM});
   $reactor->io(
@@ -64,8 +63,8 @@ sub connect {
 
 sub _cleanup {
   my $self = shift;
-  $NDN->timedout($self->{dns}) if $NDN && $self->{dns};
-  return $self unless my $reactor = $self->reactor;
+  $NDN->timedout($self->{dns}) if $self->{dns};
+  return unless my $reactor = $self->reactor;
   $self->{$_} && $reactor->remove(delete $self->{$_}) for qw(dns timer handle);
   return $self;
 }
@@ -73,11 +72,11 @@ sub _cleanup {
 sub _connect {
   my ($self, $args) = @_;
 
-  my $path   = $args->{path};
+  my $path = $args->{path};
   my $handle = $self->{handle} = $args->{handle};
 
   unless ($handle) {
-    my $class   = $path ? 'IO::Socket::UNIX' : 'IO::Socket::IP';
+    my $class = $path ? 'IO::Socket::UNIX' : 'IO::Socket::IP';
     my %options = (Blocking => 0);
 
     # UNIX domain socket
@@ -166,10 +165,9 @@ sub _try_tls {
   $reactor->remove($handle);
 
   # Start TLS handshake
-  weaken $self;
   my $tls = Mojo::IOLoop::TLS->new($handle)->reactor($self->reactor);
   $tls->on(upgrade => sub { $self->_cleanup->emit(connect => pop) });
-  $tls->on(error   => sub { $self->emit(error => pop) });
+  $tls->on(error => sub { $self->emit(error => pop) });
   $tls->negotiate(%$args);
 }
 
@@ -245,7 +243,7 @@ L<Mojo::IOLoop::Client> implements the following attributes.
   $client     = $client->reactor(Mojo::Reactor::Poll->new);
 
 Low-level event reactor, defaults to the C<reactor> attribute value of the
-global L<Mojo::IOLoop> singleton. Note that this attribute is weakened.
+global L<Mojo::IOLoop> singleton.
 
 =head1 METHODS
 
@@ -272,7 +270,7 @@ True if L<IO::Socket::SOCKS> 0.64+ is installed and SOCKS5 support enabled.
 
 Open a socket connection to a remote host. Note that non-blocking name
 resolution depends on L<Net::DNS::Native> (0.15+), SOCKS5 support on
-L<IO::Socket::Socks> (0.64), and TLS support on L<IO::Socket::SSL> (2.009+).
+L<IO::Socket::Socks> (0.64), and TLS support on L<IO::Socket::SSL> (1.94+).
 
 These options are currently available:
 
@@ -349,7 +347,7 @@ Enable TLS.
 
   tls_ca => '/etc/tls/ca.crt'
 
-Path to TLS certificate authority file.
+Path to TLS certificate authority file. Also activates hostname verification.
 
 =item tls_cert
 
@@ -363,22 +361,10 @@ Path to the TLS certificate file.
 
 Path to the TLS key file.
 
-=item tls_protocols
-
-  tls_protocols => ['foo', 'bar']
-
-ALPN protocols to negotiate.
-
-=item tls_verify
-
-  tls_verify => 0x00
-
-TLS verification mode.
-
 =back
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

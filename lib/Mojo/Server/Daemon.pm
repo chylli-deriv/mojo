@@ -1,21 +1,21 @@
 package Mojo::Server::Daemon;
 use Mojo::Base 'Mojo::Server';
 
-use Carp qw(croak);
+use Carp 'croak';
 use Mojo::IOLoop;
 use Mojo::Transaction::WebSocket;
 use Mojo::URL;
-use Mojo::Util qw(term_escape);
-use Mojo::WebSocket qw(server_handshake);
-use Scalar::Util qw(weaken);
+use Mojo::Util 'term_escape';
+use Mojo::WebSocket 'server_handshake';
+use Scalar::Util 'weaken';
 
-use constant DEBUG => $ENV{MOJO_SERVER_DEBUG} || 0;
+use constant DEBUG => $ENV{MOJO_DAEMON_DEBUG} || 0;
 
 has acceptors => sub { [] };
 has [qw(backlog max_clients silent)];
 has inactivity_timeout => sub { $ENV{MOJO_INACTIVITY_TIMEOUT} // 15 };
-has ioloop             => sub { Mojo::IOLoop->singleton };
-has listen       => sub { [split ',', $ENV{MOJO_LISTEN} || 'http://*:3000'] };
+has ioloop => sub { Mojo::IOLoop->singleton };
+has listen => sub { [split ',', $ENV{MOJO_LISTEN} || 'http://*:3000'] };
 has max_requests => 100;
 
 sub DESTROY {
@@ -25,14 +25,23 @@ sub DESTROY {
   $loop->remove($_) for keys %{$self->{connections} || {}}, @{$self->acceptors};
 }
 
-sub ports { [map { $_[0]->ioloop->acceptor($_)->port } @{$_[0]->acceptors}] }
+sub close_idle_connections {
+  my $self = shift;
+  my $c    = $self->{connections};
+  my $loop = $self->ioloop;
+  !$c->{$_}{tx} and $c->{$_}{requests} and $loop->remove($_) for keys %$c;
+}
+
+sub ports {
+  [map { $_[0]->ioloop->acceptor($_)->port } @{$_[0]->acceptors}];
+}
 
 sub run {
   my $self = shift;
 
   # Make sure the event loop can be stopped in regular intervals
   my $loop = $self->ioloop;
-  my $int  = $loop->recurring(1 => sub { });
+  my $int = $loop->recurring(1 => sub { });
   local $SIG{INT} = local $SIG{TERM} = sub { $loop->stop };
   $self->start->ioloop->start;
   $loop->remove($int);
@@ -51,10 +60,7 @@ sub start {
   }
 
   # Start listening
-  elsif (!@{$self->acceptors}) {
-    $self->app->server($self);
-    $self->_listen($_) for @{$self->listen};
-  }
+  elsif (!@{$self->acceptors}) { $self->_listen($_) for @{$self->listen} }
 
   return $self;
 }
@@ -90,11 +96,8 @@ sub _build_tx {
     request => sub {
       my $tx = shift;
 
-      my $req = $tx->req;
-      if (my $error = $req->error) { $self->_debug($id, $error->{message}) }
-
       # WebSocket
-      if ($req->is_handshake) {
+      if ($tx->req->is_handshake) {
         my $ws = $self->{connections}{$id}{next}
           = Mojo::Transaction::WebSocket->new(handshake => $tx);
         $self->emit(request => server_handshake $ws);
@@ -105,8 +108,14 @@ sub _build_tx {
 
       # Last keep-alive request or corrupted connection
       my $c = $self->{connections}{$id};
+
+      unless ($c) {
+          $tx->emit(client_disconnect => $id);
+          return;
+      }
+
       $tx->res->headers->connection('close')
-        if ($c->{requests} || 1) >= $self->max_requests || $req->error;
+        if $c->{requests} >= $self->max_requests || $tx->req->error;
 
       $tx->on(resume => sub { $self->_write($id) });
       $self->_write($id);
@@ -169,8 +178,11 @@ sub _listen {
     unless $proto eq 'http' || $proto eq 'https' || $proto eq 'http+unix';
 
   my $query   = $url->query;
-  my $options = {backlog => $self->backlog};
-  $options->{$_} = $query->param($_) for qw(fd single_accept reuse);
+  my $options = {
+    backlog       => $self->backlog,
+    single_accept => $query->param('single_accept'),
+    reuse         => $query->param('reuse')
+  };
   if ($proto eq 'http+unix') { $options->{path} = $url->host }
   else {
     if ((my $host = $url->host) ne '*') { $options->{address} = $host }
@@ -197,7 +209,7 @@ sub _listen {
       $stream->on(close => sub { $self && $self->_close($id) });
       $stream->on(error =>
           sub { $self && $self->app->log->error(pop) && $self->_close($id) });
-      $stream->on(read    => sub { $self->_read($id => pop) });
+      $stream->on(read => sub { $self->_read($id => pop) });
       $stream->on(timeout => sub { $self->_debug($id, 'Inactivity timeout') });
     }
   );
@@ -213,7 +225,7 @@ sub _read {
   my ($self, $id, $chunk) = @_;
 
   # Make sure we have a transaction
-  my $c  = $self->{connections}{$id};
+  my $c = $self->{connections}{$id};
   my $tx = $c->{tx} ||= $self->_build_tx($id, $c);
   warn term_escape "-- Server <<< Client (@{[_url($tx)]})\n$chunk\n" if DEBUG;
   $tx->server_read($chunk);
@@ -281,7 +293,7 @@ and multiple event loop support.
 For better scalability (epoll, kqueue) and to provide non-blocking name
 resolution, SOCKS5 as well as TLS support, the optional modules L<EV> (4.0+),
 L<Net::DNS::Native> (0.15+), L<IO::Socket::Socks> (0.64+) and
-L<IO::Socket::SSL> (2.009+) will be used automatically if possible. Individual
+L<IO::Socket::SSL> (1.94+) will be used automatically if possible. Individual
 features can also be disabled with the C<MOJO_NO_NNR>, C<MOJO_NO_SOCKS> and
 C<MOJO_NO_TLS> environment variables.
 
@@ -364,9 +376,6 @@ C<http://0.0.0.0:3000>).
   # Listen on UNIX domain socket "/tmp/myapp.sock" (percent encoded slash)
   $daemon->listen(['http+unix://%2Ftmp%2Fmyapp.sock']);
 
-  # File descriptor, as used by systemd
-  $daemon->listen(['http://127.0.0.1?fd=3']);
-
   # Allow multiple servers to use the same port (SO_REUSEPORT)
   $daemon->listen(['http://*:8080?reuse=1']);
 
@@ -406,13 +415,7 @@ Path to the TLS cert file, defaults to a built-in test certificate.
   ciphers=AES128-GCM-SHA256:RC4:HIGH:!MD5:!aNULL:!EDH
 
 TLS cipher specification string. For more information about the format see
-L<https://www.openssl.org/docs/manmaster/man1/ciphers.html#CIPHER-STRINGS>.
-
-=item fd
-
-  fd=3
-
-File descriptor with an already prepared listen socket.
+L<https://www.openssl.org/docs/manmaster/apps/ciphers.html#CIPHER-STRINGS>.
 
 =item key
 
@@ -438,7 +441,8 @@ Only accept one connection at a time.
 
   verify=0x00
 
-TLS verification mode.
+TLS verification mode, defaults to C<0x03> if a certificate authority file has
+been provided, or C<0x00>.
 
 =item version
 
@@ -475,6 +479,13 @@ Disable console messages.
 
 L<Mojo::Server::Daemon> inherits all methods from L<Mojo::Server> and
 implements the following new ones.
+
+=head2 close_idle_connections
+
+  $daemon->close_idle_connections;
+
+Close all connections without active requests. Note that this method is
+EXPERIMENTAL and might change without warning!
 
 =head2 ports
 
@@ -513,13 +524,13 @@ Stop accepting connections through L</"ioloop">.
 
 =head1 DEBUGGING
 
-You can set the C<MOJO_SERVER_DEBUG> environment variable to get some advanced
+You can set the C<MOJO_DAEMON_DEBUG> environment variable to get some advanced
 diagnostics information printed to C<STDERR>.
 
-  MOJO_SERVER_DEBUG=1
+  MOJO_DAEMON_DEBUG=1
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

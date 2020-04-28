@@ -2,9 +2,9 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 use Mojolicious::Lite;
+use Test::Mojo;
 
 options 'tags';
 
@@ -133,7 +133,6 @@ $t->get_ok('/buttons')->status_is(200)
 # Scripts
 $t->get_ok('/script')->status_is(200)->content_is(<<EOF);
 <script src="/script.js"></script>
-<script async src="/script.js"></script>
 <script>//<![CDATA[
 
   var a = 'b';
@@ -149,7 +148,6 @@ EOF
 # Stylesheets
 $t->get_ok('/style')->status_is(200)->content_is(<<EOF);
 <link href="/foo.css" rel="stylesheet">
-<link href="/foo.css" rel="stylesheet" title="Test">
 <style>/*<![CDATA[*/
 
   body {color: #000}
@@ -453,7 +451,7 @@ $t->put_ok('/selection?foo=bar&a=e&foo=baz&bar=d&yada=a&yada=b&h=i&h=j')
     . "\n</form>\n");
 
 # Selection with multiple values preselected
-$t->put_ok('/selection?preselect=1&undef=1')->status_is(200)
+$t->put_ok('/selection?preselect=1')->status_is(200)
   ->content_is("<form action=\"/selection?_method=PUT\" method=\"POST\">\n  "
     . '<select name="a">'
     . '<option selected value="b">b</option>'
@@ -578,7 +576,6 @@ __DATA__
 
 @@ script.html.ep
 <%= javascript '/script.js' %>
-<%= javascript '/script.js', async => undef %>
 <%= javascript begin %>
   var a = 'b';
 <% end %>
@@ -588,7 +585,6 @@ __DATA__
 
 @@ style.html.ep
 <%= stylesheet '/foo.css' %>
-<%= stylesheet '/foo.css', title => 'Test' %>
 <%= stylesheet begin %>
   body {color: #000}
 <% end %>
@@ -668,7 +664,6 @@ __DATA__
 
 @@ selection.html.ep
 % param a => qw(b g) if param 'preselect';
-% param foo => undef if param 'undef';
 %= form_for selection => begin
   %= select_field a => ['b', c(c => ['<d', [ E => 'e'], 'f']), 'g']
   %= select_field foo => [qw(bar baz)], multiple => 'multiple'

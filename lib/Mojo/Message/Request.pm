@@ -1,23 +1,14 @@
 package Mojo::Message::Request;
 use Mojo::Base 'Mojo::Message';
 
-use Digest::SHA qw(sha1_base64);
 use Mojo::Cookie::Request;
-use Mojo::Util qw(b64_encode b64_decode sha1_sum);
+use Mojo::Util qw(b64_encode b64_decode);
 use Mojo::URL;
 
-my ($SEED, $COUNTER) = ($$ . time . rand, int rand 0xffffff);
-
-has env    => sub { {} };
+has env => sub { {} };
 has method => 'GET';
 has [qw(proxy reverse_proxy)];
-has request_id => sub {
-  my $b64
-    = substr(sha1_base64($SEED . ($COUNTER = ($COUNTER + 1) % 0xffffff)), 0, 8);
-  $b64 =~ tr!+/!-_!;
-  return $b64;
-};
-has url       => sub { Mojo::URL->new };
+has url => sub { Mojo::URL->new };
 has via_proxy => 1;
 
 sub clone {
@@ -63,11 +54,8 @@ sub extract_start_line {
   # We have a (hopefully) full request-line
   return !$self->error({message => 'Bad request start-line'})
     unless $1 =~ /^(\S+)\s+(\S+)\s+HTTP\/(\d\.\d)$/;
-  my $url    = $self->method($1)->version($3)->url;
-  my $target = $2;
-  return !!$url->host_port($target)              if $1 eq 'CONNECT';
-  return !!$url->parse($target)->fragment(undef) if $target =~ /^[^:\/?#]+:/;
-  return !!$url->path_query($target);
+  my $url = $self->method($1)->version($3)->url;
+  return !!($1 eq 'CONNECT' ? $url->host_port($2) : $url->parse($2));
 }
 
 sub fix_headers {
@@ -211,7 +199,7 @@ sub _parse_env {
 
     # Remove SCRIPT_NAME prefix if necessary
     my $buffer = $path->to_string;
-    $value  =~ s!^/|/$!!g;
+    $value =~ s!^/|/$!!g;
     $buffer =~ s!^/?\Q$value\E/?!!;
     $buffer =~ s!^/!!;
     $path->parse($buffer);
@@ -324,13 +312,6 @@ Proxy URL for request.
 
 Request has been performed through a reverse proxy.
 
-=head2 request_id
-
-  my $id = $req->request_id;
-  $req   = $req->request_id('aee7d5d8');
-
-Request ID, defaults to a reasonably unique value.
-
 =head2 url
 
   my $url = $req->url;
@@ -359,8 +340,7 @@ implements the following new ones.
 
   my $clone = $req->clone;
 
-Return a new L<Mojo::Message::Request> object cloned from this request if
-possible, otherwise return C<undef>.
+Clone request if possible, otherwise return C<undef>.
 
 =head2 cookies
 
@@ -431,7 +411,7 @@ than just the last one, you can use L</"every_param">. Note that this method
 caches all data, so it should not be called before the entire request body has
 been received. Parts of the request body need to be loaded into memory to parse
 C<POST> parameters, so you have to make sure it is not excessively large.
-There's a 16MiB limit for requests by default.
+There's a 16MB limit for requests by default.
 
 =head2 params
 
@@ -442,7 +422,7 @@ C<application/x-www-form-urlencoded> or C<multipart/form-data> message body,
 usually a L<Mojo::Parameters> object. Note that this method caches all data, so
 it should not be called before the entire request body has been received. Parts
 of the request body need to be loaded into memory to parse C<POST> parameters,
-so you have to make sure it is not excessively large. There's a 16MiB limit for
+so you have to make sure it is not excessively large. There's a 16MB limit for
 requests by default.
 
   # Get parameter names and values
@@ -472,6 +452,6 @@ Size of the request-line in bytes. Note that this method finalizes the request.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

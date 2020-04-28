@@ -9,12 +9,12 @@ sub client_read {
   # Skip body for HEAD request
   my $res = $self->res;
   $res->content->skip_body(1) if uc $self->req->method eq 'HEAD';
-  return undef unless $res->parse($chunk)->is_finished;
+  return unless $res->parse($chunk)->is_finished;
 
   # Unexpected 1xx response
   return $self->completed if !$res->is_info || $res->headers->upgrade;
   $self->res($res->new)->emit(unexpected => $res);
-  return undef unless length(my $leftovers = $res->content->leftovers);
+  return unless length(my $leftovers = $res->content->leftovers);
   $self->client_read($leftovers);
 }
 
@@ -67,14 +67,16 @@ sub _body {
 
   # Prepare body chunk
   my $buffer = $msg->get_body_chunk($self->{offset});
-  $self->{offset} += defined $buffer ? length $buffer : 0;
+  my $written = defined $buffer ? length $buffer : 0;
+  $self->{write} = $msg->content->is_dynamic ? 1 : ($self->{write} - $written);
+  $self->{offset} += $written;
 
   # Delayed
   $self->{writing} = 0 unless defined $buffer;
 
   # Finished
   $finish ? $self->completed : ($self->{writing} = 0)
-    if defined $buffer && !length $buffer;
+    if $self->{write} <= 0 || defined $buffer && !length $buffer;
 
   return $buffer // '';
 }
@@ -83,9 +85,9 @@ sub _headers {
   my ($self, $msg, $head) = @_;
 
   # Prepare header chunk
-  my $buffer  = $msg->get_header_chunk($self->{offset});
+  my $buffer = $msg->get_header_chunk($self->{offset});
   my $written = defined $buffer ? length $buffer : 0;
-  $self->{write}  -= $written;
+  $self->{write} -= $written;
   $self->{offset} += $written;
 
   # Switch to body
@@ -93,7 +95,10 @@ sub _headers {
     @$self{qw(http_state offset)} = ('body', 0);
 
     # Response without body
-    $self->completed->{http_state} = 'empty' if $head && $self->is_empty;
+    if ($head && $self->is_empty) { $self->completed->{http_state} = 'empty' }
+
+    # Body
+    else { $self->{write} = $msg->content->is_dynamic ? 1 : $msg->body_size }
   }
 
   return $buffer;
@@ -103,9 +108,9 @@ sub _start_line {
   my ($self, $msg) = @_;
 
   # Prepare start-line chunk
-  my $buffer  = $msg->get_start_line_chunk($self->{offset});
+  my $buffer = $msg->get_start_line_chunk($self->{offset});
   my $written = defined $buffer ? length $buffer : 0;
-  $self->{write}  -= $written;
+  $self->{write} -= $written;
   $self->{offset} += $written;
 
   # Switch to headers
@@ -246,13 +251,13 @@ implements the following new ones.
 
   $tx->client_read($bytes);
 
-Read data client-side. Used to implement user agents such as L<Mojo::UserAgent>.
+Read data client-side, used to implement user agents such as L<Mojo::UserAgent>.
 
 =head2 client_write
 
   my $bytes = $tx->client_write;
 
-Write data client-side. Used to implement user agents such as
+Write data client-side, used to implement user agents such as
 L<Mojo::UserAgent>.
 
 =head2 is_empty
@@ -287,18 +292,18 @@ Resume transaction.
 
   $tx->server_read($bytes);
 
-Read data server-side. Used to implement web servers such as
+Read data server-side, used to implement web servers such as
 L<Mojo::Server::Daemon>.
 
 =head2 server_write
 
   my $bytes = $tx->server_write;
 
-Write data server-side. Used to implement web servers such as
+Write data server-side, used to implement web servers such as
 L<Mojo::Server::Daemon>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

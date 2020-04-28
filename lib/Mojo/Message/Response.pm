@@ -3,16 +3,16 @@ use Mojo::Base 'Mojo::Message';
 
 use Mojo::Cookie::Response;
 use Mojo::Date;
+use Mojo::Util 'deprecated';
 
 has [qw(code message)];
 has max_message_size => sub { $ENV{MOJO_MAX_MESSAGE_SIZE} // 2147483648 };
 
-# Unmarked codes are from RFC 7231
+# Umarked codes are from RFC 7231
 my %MESSAGES = (
   100 => 'Continue',
   101 => 'Switching Protocols',
   102 => 'Processing',                         # RFC 2518 (WebDAV)
-  103 => 'Early Hints',                        # RFC 8297
   200 => 'OK',
   201 => 'Created',
   202 => 'Accepted',
@@ -50,11 +50,10 @@ my %MESSAGES = (
   416 => 'Request Range Not Satisfiable',
   417 => 'Expectation Failed',
   418 => "I'm a teapot",                       # RFC 2324 :)
-  421 => 'Misdirected Request',                # RFC 7540
   422 => 'Unprocessable Entity',               # RFC 2518 (WebDAV)
   423 => 'Locked',                             # RFC 2518 (WebDAV)
   424 => 'Failed Dependency',                  # RFC 2518 (WebDAV)
-  425 => 'Too Early',                          # RFC 8470
+  425 => 'Unordered Colection',                # RFC 3648 (WebDAV)
   426 => 'Upgrade Required',                   # RFC 2817
   428 => 'Precondition Required',              # RFC 6585
   429 => 'Too Many Requests',                  # RFC 6585
@@ -101,6 +100,7 @@ sub extract_start_line {
   my $content = $self->content;
   $content->skip_body(1) if $self->code($2)->is_empty;
   defined $content->$_ or $content->$_(1) for qw(auto_decompress auto_relax);
+  $content->expect_close(1) if $1 eq '1.0';
   return !!$self->version($1)->message($3);
 }
 
@@ -111,9 +111,6 @@ sub fix_headers {
   # Date
   my $headers = $self->headers;
   $headers->date(Mojo::Date->new->to_string) unless $headers->date;
-
-  # RFC 7230 3.3.2
-  $headers->remove('Content-Length') if $self->is_empty;
 
   return $self;
 }
@@ -132,10 +129,17 @@ sub is_empty {
   return $self->is_info || $code == 204 || $code == 304;
 }
 
-sub is_error        { shift->_status_class(400, 500) }
-sub is_info         { shift->_status_class(100) }
+sub is_error { shift->_status_class(400, 500) }
+sub is_info { shift->_status_class(100) }
 sub is_redirect     { shift->_status_class(300) }
 sub is_server_error { shift->_status_class(500) }
+
+# DEPRECATED!
+sub is_status_class {
+  deprecated 'Mojo::Message::Response::is_status_class is DEPRECATED'
+    . ' in favor of new is_* methods';
+  shift->_status_class(@_);
+}
 
 sub is_success { shift->_status_class(200) }
 
@@ -215,7 +219,7 @@ HTTP response status code.
   $res     = $res->max_message_size(1024);
 
 Maximum message size in bytes, defaults to the value of the
-C<MOJO_MAX_MESSAGE_SIZE> environment variable or C<2147483648> (2GiB). Setting
+C<MOJO_MAX_MESSAGE_SIZE> environment variable or C<2147483648> (2GB). Setting
 the value to C<0> will allow messages of indefinite size.
 
 =head2 message
@@ -318,6 +322,6 @@ Size of the status-line in bytes. Note that this method finalizes the response.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

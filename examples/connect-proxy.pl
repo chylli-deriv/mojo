@@ -1,11 +1,7 @@
-#
-# Minimal CONNECT proxy server for debugging
-#
-#   $ HTTPS_PROXY=http://127.0.0.1:3000 mojo get https://mojolicious.org
-#
 use Mojo::Base -strict;
 use Mojo::IOLoop;
 
+# Minimal CONNECT proxy server to test TLS tunneling
 my %buffer;
 Mojo::IOLoop->server(
   {port => 3000} => sub {
@@ -78,7 +74,11 @@ Mojo::IOLoop->server(
   }
 );
 
-print "Starting CONNECT proxy on port 3000.\n";
+print <<'EOF';
+Starting CONNECT proxy on port 3000.
+For testing use something like "HTTPS_PROXY=http://127.0.0.1:3000".
+EOF
+
 Mojo::IOLoop->start;
 
 1;

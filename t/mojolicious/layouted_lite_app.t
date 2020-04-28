@@ -2,13 +2,13 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Mojolicious::Lite;
+use Test::Mojo;
 
 # Plugin with a template
 plugin 'PluginWithTemplate';
@@ -229,8 +229,8 @@ $t->get_ok('/localized/include')->status_is(200)
 
 # Filter
 $t->get_ok('/plain/reverse')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')
-  ->content_type_is('application/octet-stream')->content_is('oof!olleH');
+  ->header_is(Server => 'Mojolicious (Perl)')->content_type_is('text/plain')
+  ->content_is('oof!olleH');
 
 # Layout in render call
 $t->get_ok('/outerlayout')->status_is(200)

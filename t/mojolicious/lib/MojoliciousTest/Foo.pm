@@ -10,8 +10,6 @@ sub config {
 
 sub fun { shift->render }
 
-sub joy { shift->render }
-
 sub index {
   my $self = shift;
   $self->layout('default');
@@ -67,10 +65,12 @@ sub suspended {
   my $self = shift;
 
   $self->res->headers->append('X-Suspended' => $self->match->position);
-  Mojo::IOLoop->next_tick(sub {
-    $self->res->headers->append('X-Suspended' => $self->match->position);
-    $self->continue;
-  });
+  Mojo::IOLoop->next_tick(
+    sub {
+      $self->res->headers->append('X-Suspended' => $self->match->position);
+      $self->continue;
+    }
+  );
 
   return 0;
 }
@@ -101,9 +101,6 @@ __DATA__
 
 @@ foo/fun.html.ep
 <p>Have fun!</p>\
-
-@@ foo/joy.html.ep
-<p class="joy" style="background-color: darkred;">Joy for all!</p>\
 
 @@ just/some/template.html.epl
 Development template with high precedence.

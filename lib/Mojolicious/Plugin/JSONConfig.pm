@@ -1,7 +1,7 @@
 package Mojolicious::Plugin::JSONConfig;
 use Mojo::Base 'Mojolicious::Plugin::Config';
 
-use Mojo::JSON qw(from_json);
+use Mojo::JSON 'from_json';
 use Mojo::Template;
 
 sub parse {
@@ -24,7 +24,7 @@ sub render {
   $prepend .= q[my $app = shift; sub app; local *app = sub { $app };];
   $prepend .= q[use Mojo::Base -strict; no warnings 'ambiguous';];
 
-  my $mt     = Mojo::Template->new($conf->{template} || {})->name($file);
+  my $mt = Mojo::Template->new($conf->{template} || {})->name($file);
   my $output = $mt->prepend($prepend . $mt->prepend)->render($content, $app);
   return ref $output ? die $output : $output;
 }
@@ -60,7 +60,7 @@ Mojolicious::Plugin::JSONConfig - JSON configuration plugin
   say $config->{foo};
 
   # foo.html.ep
-  %= config->{foo}
+  %= $config->{foo}
 
   # The configuration is available application-wide
   my $config = app->config;
@@ -80,8 +80,8 @@ generated from the value of L<Mojolicious/"moniker"> (C<$moniker.json>). You can
 extend the normal configuration file C<$moniker.json> with C<mode> specific ones
 like C<$moniker.$mode.json>, which will be detected automatically.
 
-If the configuration value C<config_override> has been set in
-L<Mojolicious/"config"> when this plugin is loaded, it will not do anything.
+If the configuration value C<config_override> has been set in L<Mojo/"config">
+when this plugin is loaded, it will not do anything.
 
 The code of this plugin is a good example for learning to build new plugins,
 you're welcome to fork it.
@@ -142,6 +142,6 @@ Process configuration file with L<Mojo::Template>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -3,7 +3,7 @@ use Mojo::Base -base;
 
 use Mojo::Cookie::Request;
 use Mojo::Path;
-use Scalar::Util qw(looks_like_number);
+use Scalar::Util 'looks_like_number';
 
 has 'ignore';
 has max_cookie_size => 4096;
@@ -22,11 +22,12 @@ sub add {
     next if length($cookie->value // '') > $size;
 
     # Replace cookie
-    next unless my $domain = lc($cookie->domain // '');
-    next unless my $path   = $cookie->path;
+    my $origin = $cookie->origin // '';
+    next unless my $domain = lc($cookie->domain // $origin);
+    next unless my $path = $cookie->path;
     next unless length(my $name = $cookie->name // '');
     my $jar = $self->{jar}{$domain} ||= [];
-    @$jar = (grep({ _compare($_, $path, $name, $domain) } @$jar), $cookie);
+    @$jar = (grep({ _compare($_, $path, $name, $origin) } @$jar), $cookie);
   }
 
   return $self;
@@ -45,8 +46,7 @@ sub collect {
 
     # Validate domain
     my $host = lc $url->ihost;
-    $cookie->domain($host)->host_only(1) unless $cookie->domain;
-    my $domain = lc $cookie->domain;
+    my $domain = lc($cookie->domain // $cookie->origin($host)->origin);
     if (my $cb = $self->ignore) { next if $cb->($cookie) }
     next if $host ne $domain && ($host !~ /\Q.$domain\E$/ || $host =~ /\.\d+$/);
 
@@ -65,14 +65,14 @@ sub find {
 
   my @found;
   my $domain = my $host = lc $url->ihost;
-  my $path   = $url->path->to_abs_string;
+  my $path = $url->path->to_abs_string;
   while ($domain) {
     next unless my $old = $self->{jar}{$domain};
 
     # Grab cookies
     my $new = $self->{jar}{$domain} = [];
     for my $cookie (@$old) {
-      next if $cookie->host_only && $host ne $cookie->domain;
+      next unless $cookie->domain || $host eq $cookie->origin;
 
       # Check if cookie has expired
       if (defined(my $expires = $cookie->expires)) { next if time > $expires }
@@ -101,11 +101,9 @@ sub prepare {
 }
 
 sub _compare {
-  my ($cookie, $path, $name, $domain) = @_;
-  return
-       $cookie->path ne $path
-    || $cookie->name ne $name
-    || $cookie->domain ne $domain;
+  my ($cookie, $path, $name, $origin) = @_;
+  return 1 if $cookie->path ne $path || $cookie->name ne $name;
+  return ($cookie->origin // '') ne $origin;
 }
 
 sub _path { $_[0] eq '/' || $_[0] eq $_[1] || index($_[1], "$_[0]/") == 0 }
@@ -170,7 +168,7 @@ A callback used to decide if a cookie should be ignored by L</"collect">.
   my $size = $jar->max_cookie_size;
   $jar     = $jar->max_cookie_size(4096);
 
-Maximum cookie size in bytes, defaults to C<4096> (4KiB).
+Maximum cookie size in bytes, defaults to C<4096> (4KB).
 
 =head1 METHODS
 
@@ -222,6 +220,6 @@ Prepare request cookies for transaction.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -4,13 +4,13 @@ use Mojo::Base -base;
 # No imports, for security reasons!
 use Carp ();
 use Mojo::ByteStream;
-use Mojo::DynamicMethods -dispatch;
 use Mojo::URL;
 use Mojo::Util;
 use Mojolicious::Routes::Match;
 use Scalar::Util ();
+use Time::HiRes  ();
 
-has [qw(app tx)] => undef, weak => 1;
+has [qw(app tx)];
 has match =>
   sub { Mojolicious::Routes::Match->new(root => shift->app->routes) };
 
@@ -20,17 +20,20 @@ my %RESERVED = map { $_ => 1 } (
   qw(namespace path status template text variant)
 );
 
-sub BUILD_DYNAMIC {
-  my ($class, $method, $dyn_methods) = @_;
+sub AUTOLOAD {
+  my $self = shift;
 
-  return sub {
-    my $self    = shift;
-    my $dynamic = $dyn_methods->{$self->{app}{renderer}}{$method};
-    return $self->$dynamic(@_) if $dynamic;
-    my $package = ref $self;
-    Carp::croak qq{Can't locate object method "$method" via package "$package"};
-  };
+  my ($package, $method) = our $AUTOLOAD =~ /^(.+)::(.+)$/;
+  Carp::croak "Undefined subroutine &${package}::$method called"
+    unless Scalar::Util::blessed $self && $self->isa(__PACKAGE__);
+
+  # Call helper with current controller
+  Carp::croak qq{Can't locate object method "$method" via package "$package"}
+    unless my $helper = $self->app->renderer->get_helper($method);
+  return $self->$helper(@_);
 }
+
+sub continue { $_[0]->app->routes->continue($_[0]) }
 
 sub cookie {
   my ($self, $name) = (shift, shift);
@@ -40,7 +43,7 @@ sub cookie {
 
     # Cookie too big
     my $cookie = {name => $name, value => shift, %{shift || {}}};
-    $self->helpers->log->error(qq{Cookie "$name" is bigger than 4KiB})
+    $self->app->log->error(qq{Cookie "$name" is bigger than 4096 bytes})
       if length $cookie->{value} > 4096;
 
     $self->res->cookies($cookie);
@@ -85,15 +88,15 @@ sub every_signed_cookie {
 
       my $valid;
       for my $secret (@$secrets) {
-        my $check = Mojo::Util::hmac_sha1_sum("$name=$value", $secret);
+        my $check = Mojo::Util::hmac_sha1_sum($value, $secret);
         ++$valid and last if Mojo::Util::secure_compare($signature, $check);
       }
       if ($valid) { push @results, $value }
 
-      else { $self->helpers->log->debug(qq{Cookie "$name" has bad signature}) }
+      else { $self->app->log->debug(qq{Cookie "$name" has a bad signature}) }
     }
 
-    else { $self->helpers->log->debug(qq{Cookie "$name" is not signed}) }
+    else { $self->app->log->debug(qq{Cookie "$name" is not signed}) }
   }
 
   return \@results;
@@ -103,7 +106,7 @@ sub finish {
   my $self = shift;
 
   # WebSocket
-  my $tx = $self->tx || Carp::croak 'Transaction already destroyed';
+  my $tx = $self->tx || Carp::croak 'Connection already closed';
   $tx->finish(@_) and return $tx->established ? $self : $self->rendered(101)
     if $tx->is_websocket;
 
@@ -115,11 +118,26 @@ sub finish {
   return @_ ? $self->write(@_)->write('') : $self->write('');
 }
 
+sub flash {
+  my $self = shift;
+
+  # Check old flash
+  my $session = $self->session;
+  return $session->{flash} ? $session->{flash}{$_[0]} : undef
+    if @_ == 1 && !ref $_[0];
+
+  # Initialize new flash and merge values
+  my $values = ref $_[0] ? $_[0] : {@_};
+  @{$session->{new_flash} ||= {}}{keys %$values} = values %$values;
+
+  return $self;
+}
+
 sub helpers { $_[0]->app->renderer->get_helper('')->($_[0]) }
 
 sub on {
   my ($self, $name, $cb) = @_;
-  my $tx = $self->tx || Carp::croak 'Transaction already destroyed';
+  my $tx = $self->tx || Carp::croak 'Connection already closed';
   $self->rendered(101) if $tx->is_websocket && !$tx->established;
   return $tx->on($name => sub { shift; $self->$cb(@_) });
 }
@@ -131,6 +149,15 @@ sub param {
   return $self;
 }
 
+sub redirect_to {
+  my $self = shift;
+
+  # Don't override 3xx status
+  my $res = $self->res;
+  $res->headers->location($self->url_for(@_));
+  return $self->rendered($res->is_redirect ? () : 302);
+}
+
 sub render {
   my $self = shift;
 
@@ -139,21 +166,10 @@ sub render {
   $args->{template} = $template if $template;
   my $app     = $self->app;
   my $plugins = $app->plugins->emit_hook(before_render => $self, $args);
+  my $maybe   = delete $args->{'mojo.maybe'};
 
-  # Localize "extends" and "layout" to allow argument overrides
-  my ($maybe, $ts) = @{$args}{'mojo.maybe', 'mojo.string'};
-  my $stash = $self->stash;
-  local $stash->{layout}  = $stash->{layout}  if exists $stash->{layout};
-  local $stash->{extends} = $stash->{extends} if exists $stash->{extends};
-
-  # Rendering to string
-  local @{$stash}{keys %$args}         if $ts || $maybe;
-  delete @{$stash}{qw(layout extends)} if $ts;
-
-  # All other arguments just become part of the stash
-  @$stash{keys %$args} = values %$args;
-  my $renderer = $app->renderer;
-  my ($output, $format) = $renderer->render($self, $args);
+  my $ts = $args->{'mojo.string'};
+  my ($output, $format) = $app->renderer->render($self, $args);
 
   # Maybe no 404
   return defined $output ? Mojo::ByteStream->new($output) : undef if $ts;
@@ -161,7 +177,10 @@ sub render {
     unless defined $output;
 
   $plugins->emit_hook(after_render => $self, \$output, $format);
-  return $renderer->respond($self, $output, $format, $stash->{status});
+  my $headers = $self->res->body($output)->headers;
+  $headers->content_type($app->types->type($format) || 'text/plain')
+    unless $headers->content_type;
+  return !!$self->rendered($self->stash->{status});
 }
 
 sub render_later { shift->stash('mojo.rendered' => 1) }
@@ -174,24 +193,23 @@ sub rendered {
   my ($self, $status) = @_;
 
   # Make sure we have a status
-  $self->res->code($status) if $status;
+  my $res = $self->res;
+  $res->code($status || 200) if $status || !$res->code;
 
   # Finish transaction
   my $stash = $self->stash;
   if (!$stash->{'mojo.finished'} && ++$stash->{'mojo.finished'}) {
-    my $res = $self->res;
-    $res->code(200) if !$status && !$res->code;
 
     # Disable auto rendering and stop timer
     my $app = $self->render_later->app;
-    $self->helpers->log->debug(sub {
-      my $timing  = $self->helpers->timing;
-      my $elapsed = $timing->elapsed('mojo.timer') // 0;
-      my $rps     = $timing->rps($elapsed) // '??';
-      my $code    = $res->code;
-      my $msg     = $res->message || $res->default_message($code);
-      return "$code $msg (${elapsed}s, $rps/s)";
-    }) unless $stash->{'mojo.static'};
+    if (my $started = delete $stash->{'mojo.started'}) {
+      my $elapsed
+        = Time::HiRes::tv_interval($started, [Time::HiRes::gettimeofday()]);
+      my $rps  = $elapsed == 0 ? '??' : sprintf '%.3f', 1 / $elapsed;
+      my $code = $res->code;
+      my $msg  = $res->message || $res->default_message($code);
+      $app->log->debug("$code $msg (${elapsed}s, $rps/s)");
+    }
 
     $app->plugins->emit_hook_reverse(after_dispatch => $self);
     $app->sessions->store($self);
@@ -200,12 +218,37 @@ sub rendered {
   return $self;
 }
 
-sub req { (shift->tx || Carp::croak 'Transaction already destroyed')->req }
-sub res { (shift->tx || Carp::croak 'Transaction already destroyed')->res }
+sub req { (shift->tx || Carp::croak 'Connection already closed')->req }
+sub res { (shift->tx || Carp::croak 'Connection already closed')->res }
+
+sub respond_to {
+  my ($self, $args) = (shift, ref $_[0] ? $_[0] : {@_});
+
+  # Find target
+  my $target;
+  my $renderer = $self->app->renderer;
+  my @formats  = @{$renderer->accepts($self)};
+  for my $format (@formats ? @formats : ($renderer->default_format)) {
+    next unless $target = $args->{$format};
+    $self->stash->{format} = $format;
+    last;
+  }
+
+  # Fallback
+  unless ($target) {
+    return $self->rendered(204) unless $target = $args->{any};
+    delete $self->stash->{format};
+  }
+
+  # Dispatch
+  ref $target eq 'CODE' ? $target->($self) : $self->render(%$target);
+
+  return $self;
+}
 
 sub send {
   my ($self, $msg, $cb) = @_;
-  my $tx = $self->tx || Carp::croak 'Transaction already destroyed';
+  my $tx = $self->tx || Carp::croak 'Connection already closed';
   Carp::croak 'No WebSocket connection to send message to'
     unless $tx->is_websocket;
   $tx->send($msg, $cb ? sub { shift; $self->$cb(@_) } : ());
@@ -240,8 +283,8 @@ sub signed_cookie {
   return $self->every_signed_cookie($name)->[-1] unless defined $value;
 
   # Response cookie
-  my $sum = Mojo::Util::hmac_sha1_sum("$name=$value", $self->app->secrets->[0]);
-  return $self->cookie($name, "$value--$sum", $options);
+  my $checksum = Mojo::Util::hmac_sha1_sum($value, $self->app->secrets->[0]);
+  return $self->cookie($name, "$value--$checksum", $options);
 }
 
 sub stash { Mojo::Util::_stash(stash => @_) }
@@ -283,6 +326,22 @@ sub url_for {
   $base_path->parts([])->trailing_slash(0);
 
   return $url;
+}
+
+sub validation {
+  my $self = shift;
+
+  my $stash = $self->stash;
+  return $stash->{'mojo.validation'} if $stash->{'mojo.validation'};
+
+  my $req    = $self->req;
+  my $token  = $self->session->{csrf_token};
+  my $header = $req->headers->header('X-CSRF-Token');
+  my $hash   = $req->params->to_hash;
+  $hash->{csrf_token} //= $header if $token && $header;
+  $hash->{$_} = $req->every_upload($_) for map { $_->name } @{$req->uploads};
+  my $validation = $self->app->validator->validation->input($hash);
+  return $stash->{'mojo.validation'} = $validation->csrf_token($token);
 }
 
 sub write {
@@ -328,7 +387,8 @@ L<Mojolicious/"controller_class">.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Controller> implements the following attributes.
+L<Mojolicious::Controller> inherits all attributes from L<Mojo::Base> and
+implements the following new ones.
 
 =head2 app
 
@@ -336,7 +396,7 @@ L<Mojolicious::Controller> implements the following attributes.
   $c      = $c->app(Mojolicious->new);
 
 A reference back to the application that dispatched to this controller, usually
-a L<Mojolicious> object. Note that this attribute is weakened.
+a L<Mojolicious> object.
 
   # Use application logger
   $c->app->log->debug('Hello Mojo');
@@ -364,15 +424,15 @@ L<Mojolicious::Routes::Match> object.
 
 The transaction that is currently being processed, usually a
 L<Mojo::Transaction::HTTP> or L<Mojo::Transaction::WebSocket> object. Note that
-this attribute is weakened. So the object needs to be referenced elsewhere as
-well when you're performing non-blocking operations and the underlying
-connection might get closed early.
+this reference is usually weakened, so the object needs to be referenced
+elsewhere as well when you're performing non-blocking operations and the
+underlying connection might get closed early.
 
   # Check peer information
   my $address = $c->tx->remote_address;
   my $port    = $c->tx->remote_port;
 
-  # Increase size limit for WebSocket messages to 16MiB
+  # Increase size limit for WebSocket messages to 16MB
   $c->tx->max_websocket_size(16777216) if $c->tx->is_websocket;
 
   # Perform non-blocking operation without knowing the connection status
@@ -385,6 +445,13 @@ connection might get closed early.
 
 L<Mojolicious::Controller> inherits all methods from L<Mojo::Base> and
 implements the following new ones.
+
+=head2 continue
+
+  $c->continue;
+
+Continue dispatch chain from an intermediate destination with
+L<Mojolicious::Routes/"continue">.
 
 =head2 cookie
 
@@ -442,6 +509,18 @@ sharing the same name as an array reference.
 Close WebSocket connection or long poll stream gracefully. This method will
 automatically respond to WebSocket handshake requests with a C<101> response
 status, to establish the WebSocket connection.
+
+=head2 flash
+
+  my $foo = $c->flash('foo');
+  $c      = $c->flash({foo => 'bar'});
+  $c      = $c->flash(foo => 'bar');
+
+Data storage persistent only for the next request, stored in the L</"session">.
+
+  # Show message after redirect
+  $c->flash(message => 'User created successfully!');
+  $c->redirect_to('show_user', id => 23);
 
 =head2 helpers
 
@@ -505,7 +584,7 @@ message body, in that order. If there are multiple values sharing the same
 name, and you want to access more than just the last one, you can use
 L</"every_param">. Parts of the request body need to be loaded into memory to
 parse C<POST> parameters, so you have to make sure it is not excessively large.
-There's a 16MiB limit for requests by default.
+There's a 16MB limit for requests by default.
 
   # Get first value
   my $first = $c->every_param('foo')->[0];
@@ -523,6 +602,24 @@ For more control you can also access request information directly.
 
   # Only file uploads
   my $foo = $c->req->upload('foo');
+
+=head2 redirect_to
+
+  $c = $c->redirect_to('named', foo => 'bar');
+  $c = $c->redirect_to('named', {foo => 'bar'});
+  $c = $c->redirect_to('/index.html');
+  $c = $c->redirect_to('http://example.com/index.html');
+
+Prepare a C<302> (if the status code is not already C<3xx>) redirect response
+with C<Location> header, takes the same arguments as L</"url_for">.
+
+  # Moved Permanently
+  $c->res->code(301);
+  $c->redirect_to('some_route');
+
+  # Temporary Redirect
+  $c->res->code(307);
+  $c->redirect_to('some_route');
 
 =head2 render
 
@@ -549,7 +646,7 @@ L</"stash">.
   $c->stash(text => 'I ♥ Mojolicious!')->render;
 
   # Render binary data
-  use Mojo::JSON qw(encode_json);
+  use Mojo::JSON 'encode_json';
   $c->render(data => encode_json({test => 'I ♥ Mojolicious!'}));
 
   # Render JSON
@@ -591,9 +688,7 @@ automatic rendering would result in a response.
 
 Try to render content, but do not call
 L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>not_found"> if no response
-could be generated, all arguments get localized automatically and are only
-available during this render operation, takes the same arguments as
-L</"render">.
+could be generated, takes the same arguments as L</"render">.
 
   # Render template "index_local" only if it exists
   $c->render_maybe('index_local') or $c->render('index');
@@ -633,7 +728,6 @@ Get L<Mojo::Message::Request> object from L</"tx">.
   my $req = $c->tx->req;
 
   # Extract request information
-  my $id     = $c->req->request_id;
   my $method = $c->req->method;
   my $url    = $c->req->url->to_abs;
   my $info   = $c->req->url->to_abs->userinfo;
@@ -668,6 +762,33 @@ Get L<Mojo::Message::Response> object from L</"tx">.
   $c->res->headers->cache_control('public, max-age=300');
   $c->res->headers->append(Vary => 'Accept-Encoding');
 
+=head2 respond_to
+
+  $c = $c->respond_to(
+    json => {json => {message => 'Welcome!'}},
+    html => {template => 'welcome'},
+    any  => sub {...}
+  );
+
+Automatically select best possible representation for resource from C<Accept>
+request header, C<format> stash value or C<format> C<GET>/C<POST> parameter,
+defaults to L<Mojolicious::Renderer/"default_format"> or rendering an empty
+C<204> response. Each representation can be handled with a callback or a hash
+reference containing arguments to be passed to L</"render">. Since browsers
+often don't really know what they actually want, unspecific C<Accept> request
+headers with more than one MIME type will be ignored, unless the
+C<X-Requested-With> header is set to the value C<XMLHttpRequest>.
+
+  # Everything else than "json" and "xml" gets a 204 response
+  $c->respond_to(
+    json => sub { $c->render(json => {just => 'works'}) },
+    xml  => {text => '<just>works</just>'},
+    any  => {data => '', status => 204}
+  );
+
+For more advanced negotiation logic you can also use the helper
+L<Mojolicious::Plugin::DefaultHelpers/"accepts">.
+
 =head2 send
 
   $c = $c->send({binary => $bytes});
@@ -689,11 +810,11 @@ establish the WebSocket connection.
   $c->send({json => {test => 'I ♥ Mojolicious!'}});
 
   # Send JSON object as "Binary" message
-  use Mojo::JSON qw(encode_json);
+  use Mojo::JSON 'encode_json';
   $c->send({binary => encode_json({test => 'I ♥ Mojolicious!'})});
 
   # Send "Ping" frame
-  use Mojo::WebSocket qw(WS_PING);
+  use Mojo::WebSocket 'WS_PING';
   $c->send([1, 0, 0, 0, WS_PING, 'Hello World!']);
 
   # Make sure the first message has been written before continuing
@@ -719,7 +840,7 @@ usually defaults to C<15> seconds.
 Persistent data storage for the next few requests, all session data gets
 serialized with L<Mojo::JSON> and stored Base64 encoded in HMAC-SHA1 signed
 cookies, to prevent tampering. Note that cookies usually have a C<4096> byte
-(4KiB) limit, depending on browser.
+(4KB) limit, depending on browser.
 
   # Manipulate session
   $c->session->{foo} = 'bar';
@@ -783,18 +904,6 @@ C<mojo.*> prefix are reserved for internal use.
 
 Generate a portable L<Mojo::URL> object with base for a path, URL or route.
 
-  # Rebuild URL for the current route
-  $c->url_for;
-
-  # Rebuild URL for the current route, but replace the "name" placeholder value
-  $c->url_for(name => 'sebastian');
-
-  # Absolute URL for the current route
-  $c->url_for->to_abs;
-
-  # Build URL for route "test" with two placeholder values
-  $c->url_for('test', name => 'sebastian', foo => 'bar');
-
   # "http://127.0.0.1:3000/index.html" if application was started with Morbo
   $c->url_for('/index.html')->to_abs;
 
@@ -811,7 +920,28 @@ You can also use the helper L<Mojolicious::Plugin::DefaultHelpers/"url_with">
 to inherit query parameters from the current request.
 
   # "/list?q=mojo&page=2" if current request was for "/list?q=mojo&page=1"
-  $c->url_with->query({page => 2});
+  $c->url_with->query([page => 2]);
+
+=head2 validation
+
+  my $validation = $c->validation;
+
+Get L<Mojolicious::Validator::Validation> object for current request to
+validate file uploads as well as C<GET> and C<POST> parameters extracted from
+the query string and C<application/x-www-form-urlencoded> or
+C<multipart/form-data> message body. Parts of the request body need to be loaded
+into memory to parse C<POST> parameters, so you have to make sure it is not
+excessively large. There's a 16MB limit for requests by default.
+
+  # Validate GET/POST parameter
+  my $validation = $c->validation;
+  $validation->required('title', 'trim')->size(3, 50);
+  my $title = $validation->param('title');
+
+  # Validate file upload
+  my $validation = $c->validation;
+  $validation->required('tarball')->upload->size(1, 1048576);
+  my $tarball = $validation->param('tarball');
 
 =head2 write
 
@@ -902,7 +1032,7 @@ the stream.
   o!
   0
 
-=head1 HELPERS
+=head1 AUTOLOAD
 
 In addition to the L</"ATTRIBUTES"> and L</"METHODS"> above you can also call
 helpers provided by L</"app"> on L<Mojolicious::Controller> objects. This
@@ -918,6 +1048,6 @@ L<Mojolicious::Plugin::TagHelpers>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

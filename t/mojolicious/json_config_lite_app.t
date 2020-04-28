@@ -5,10 +5,10 @@ BEGIN {
   $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll';
 }
 
-use Test::Mojo;
 use Test::More;
-use Mojo::File qw(curfile);
+use Mojo::File 'path';
 use Mojolicious::Lite;
+use Test::Mojo;
 
 # Default
 app->config(it => 'works');
@@ -16,12 +16,12 @@ is_deeply app->config, {it => 'works'}, 'right value';
 
 # Invalid config file
 eval { plugin JSONConfig => {file => 'public/hello.txt'} };
-like $@, qr/JSON/, 'right error';
+like $@, qr/Malformed JSON/, 'right error';
 
 # Load plugins
 my $config
   = plugin j_s_o_n_config => {default => {foo => 'baz', hello => 'there'}};
-my $path = curfile->sibling('json_config_lite_app_abs.json');
+my $path = path(__FILE__)->to_abs->sibling('json_config_lite_app_abs.json');
 plugin JSONConfig => {file => $path};
 is $config->{foo},          'bar',            'right value';
 is $config->{hello},        'there',          'right value';
@@ -44,7 +44,7 @@ get '/' => 'index';
 
 my $t = Test::Mojo->new;
 
-$t->get_ok('/')->status_is(200)->content_is("barbar\n");
+$t->get_ok('/')->status_is(200)->content_is("barbarbar\n");
 
 # No config file, default only
 $config
@@ -65,4 +65,4 @@ done_testing();
 
 __DATA__
 @@ index.html.ep
-<%= config->{foo} %><%= config 'foo' %>
+<%= $config->{foo} %><%= config->{foo} %><%= config 'foo' %>

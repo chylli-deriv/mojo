@@ -3,12 +3,11 @@ use Mojo::Base -strict;
 use Test::More;
 use Mojo::Asset::File;
 use Mojo::Asset::Memory;
-use Mojo::Promise;
 use Mojo::Transaction::WebSocket;
 use Mojo::URL;
 use Mojo::UserAgent::Transactor;
 use Mojo::Util qw(b64_decode encode);
-use Mojo::WebSocket qw(server_handshake);
+use Mojo::WebSocket 'server_handshake';
 
 # Custom content generator
 my $t = Mojo::UserAgent::Transactor->new;
@@ -18,20 +17,6 @@ $t->add_generator(
     $tx->req->body(scalar reverse $content);
   }
 );
-
-# Compression
-{
-  local $ENV{MOJO_GZIP} = 1;
-  my $t = Mojo::UserAgent::Transactor->new;
-  ok $t->compressed, 'compressed';
-  is $t->tx(GET => '/')->req->headers->accept_encoding, 'gzip', 'right value';
-  is $t->tx(GET => '/')->res->content->auto_decompress, undef,  'no value';
-  $ENV{MOJO_GZIP} = 0;
-  $t = Mojo::UserAgent::Transactor->new;
-  ok !$t->compressed, 'not compressed';
-  is $t->tx(GET => '/')->req->headers->accept_encoding, undef, 'no value';
-  is $t->tx(GET => '/')->res->content->auto_decompress, 0,     'right value';
-}
 
 # Simple GET
 my $tx = $t->tx(GET => 'mojolicious.org/foo.html?bar=baz');
@@ -200,7 +185,7 @@ is $tx->req->default_charset('shift_jis')->param('やった'), 'やった',
 $tx
   = $t->tx(POST => 'http://example.com/foo' =>
     {'Content-Type' => 'multipart/form-data'} => form =>
-    {'♥'          => '☃', nothing => undef});
+    {'♥' => '☃', nothing => undef});
 is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
 is $tx->req->method, 'POST', 'right method';
 is $tx->req->headers->content_type, 'multipart/form-data',
@@ -218,7 +203,7 @@ is $tx->req->param('♥'), '☃', 'right value';
 $tx
   = $t->tx(POST => 'http://example.com/foo' =>
     {'Content-Type' => 'multipart/form-data'} => form =>
-    {'やった'    => 'やった'}           => charset => 'shift_jis');
+    {'やった' => 'やった'} => charset => 'shift_jis');
 is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
 is $tx->req->method, 'POST', 'right method';
 is $tx->req->headers->content_type, 'multipart/form-data',
@@ -238,7 +223,7 @@ is $tx->req->default_charset('shift_jis')->param('やった'), 'やった',
 $tx
   = $t->tx(POST => 'http://example.com/foo' =>
     {'Content-Type' => 'multipart/form-data'} => form =>
-    {a              => [1, 2, 3], b => 4});
+    {a => [1, 2, 3], b => 4});
 is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
 is $tx->req->method, 'POST', 'right method';
 is $tx->req->headers->content_type, 'multipart/form-data',
@@ -280,7 +265,7 @@ is $tx->req->content->parts->[1], undef, 'no more parts';
 $tx
   = $t->tx(POST => 'http://example.com/foo' =>
     {'Content-Type' => 'multipart/mojo-form'} => form =>
-    {mytext         => {file => Mojo::Asset::File->new(path => __FILE__)}});
+    {mytext => {file => Mojo::Asset::File->new(path => __FILE__)}});
 is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
 is $tx->req->method, 'POST', 'right method';
 is $tx->req->headers->content_type, 'multipart/mojo-form',
@@ -374,57 +359,6 @@ like $tx->req->content->parts->[1]->headers->content_disposition, qr/two\.txt/,
   'right "Content-Disposition" value';
 is $tx->req->content->parts->[1]->asset->slurp, 'works', 'right part';
 is $tx->req->content->parts->[2], undef, 'no more parts';
-
-# Multipart request (long)
-$tx = $t->tx(POST => 'http://example.com/foo' => multipart =>
-    [{content => 'just'}, {content => 'works'}]);
-is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
-is $tx->req->method, 'POST', 'right method';
-is $tx->req->headers->content_type, undef, 'no "Content-Type" value';
-is $tx->req->content->parts->[0]->headers->content_disposition, undef,
-  'no "Content-Disposition" value';
-is $tx->req->content->parts->[0]->asset->slurp, 'just', 'right part';
-is $tx->req->content->parts->[1]->headers->content_disposition, undef,
-  'no "Content-Disposition" value';
-is $tx->req->content->parts->[1]->asset->slurp, 'works', 'right part';
-is $tx->req->content->parts->[2], undef, 'no more parts';
-
-# Multipart request (short)
-$tx
-  = $t->tx(POST => 'http://example.com/foo' => multipart => ['just', 'works']);
-is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
-is $tx->req->method, 'POST', 'right method';
-is $tx->req->headers->content_type, undef, 'no "Content-Type" value';
-is $tx->req->content->parts->[0]->headers->content_disposition, undef,
-  'no "Content-Disposition" value';
-is $tx->req->content->parts->[0]->asset->slurp, 'just', 'right part';
-is $tx->req->content->parts->[1]->headers->content_disposition, undef,
-  'no "Content-Disposition" value';
-is $tx->req->content->parts->[1]->asset->slurp, 'works', 'right part';
-is $tx->req->content->parts->[2], undef, 'no more parts';
-
-# Multipart request with asset
-$tx = $t->tx(POST => 'http://example.com/foo' => multipart =>
-    [{file => Mojo::Asset::Memory->new->add_chunk('snowman')}]);
-is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
-is $tx->req->method, 'POST', 'right method';
-is $tx->req->headers->content_type, undef, 'no "Content-Type" value';
-is $tx->req->content->parts->[0]->headers->content_disposition, undef,
-  'no "Content-Disposition" value';
-is $tx->req->content->parts->[0]->asset->slurp, 'snowman', 'right part';
-is $tx->req->content->parts->[1], undef, 'no more parts';
-
-# Multipart request with real file and custom header
-$tx = $t->tx(POST => 'http://example.com/foo' => multipart =>
-    [{file => __FILE__, DNT => 1}]);
-is $tx->req->url->to_abs, 'http://example.com/foo', 'right URL';
-is $tx->req->method, 'POST', 'right method';
-is $tx->req->headers->content_type, undef, 'no "Content-Type" value';
-like $tx->req->content->parts->[0]->asset->slurp, qr/mytext/, 'right part';
-ok $tx->req->content->parts->[0]->asset->is_file, 'stored in file';
-ok !$tx->req->content->parts->[0]->headers->header('file'), 'no "file" header';
-is $tx->req->content->parts->[0]->headers->dnt, 1, 'right "DNT" header';
-is $tx->req->content->parts->[1], undef, 'no more parts';
 
 # Simple endpoint
 $tx = $t->tx(GET => 'mojolicious.org');
@@ -696,8 +630,8 @@ is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->body, 'whatever', 'right content';
 $tx = $t->redirect($tx);
 is $tx->req->method, 'GET', 'right method';
-is $tx->req->url->to_abs,     'http://example.com/bar', 'right URL';
-is $tx->req->headers->accept, '*/*',                    'right "Accept" value';
+is $tx->req->url->to_abs, 'http://example.com/bar', 'right URL';
+is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->headers->location, undef, 'no "Location" value';
 is $tx->req->body, '',    'no content';
 is $tx->res->code, undef, 'no status';
@@ -712,8 +646,8 @@ is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->body, 'whatever', 'right content';
 $tx = $t->redirect($tx);
 is $tx->req->method, 'DELETE', 'right method';
-is $tx->req->url->to_abs,     'http://example.com/bar', 'right URL';
-is $tx->req->headers->accept, '*/*',                    'right "Accept" value';
+is $tx->req->url->to_abs, 'http://example.com/bar', 'right URL';
+is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->headers->location, undef, 'no "Location" value';
 is $tx->req->body, '',    'no content';
 is $tx->res->code, undef, 'no status';
@@ -735,7 +669,7 @@ is $tx->req->body, '',    'no content';
 is $tx->res->code, undef, 'no status';
 is $tx->res->headers->location, undef, 'no "Location" value';
 
-# 302 redirect (lowercase HEAD)
+# 302 redirect (lowecase HEAD)
 $tx = $t->tx(head => 'http://mojolicious.org/foo');
 $tx->res->code(302);
 $tx->res->headers->location('http://example.com/bar');
@@ -774,8 +708,8 @@ is $tx->req->headers->content_length, 8, 'right "Content-Length" value';
 is $tx->req->body, 'whatever', 'right content';
 $tx = $t->redirect($tx);
 is $tx->req->method, 'GET', 'right method';
-is $tx->req->url->to_abs,     'http://example.com/bar', 'right URL';
-is $tx->req->headers->accept, '*/*',                    'right "Accept" value';
+is $tx->req->url->to_abs, 'http://example.com/bar', 'right URL';
+is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->headers->content_type,   undef, 'no "Content-Type" value';
 is $tx->req->headers->content_length, undef, 'no "Content-Length" value';
 is $tx->req->headers->location,       undef, 'no "Location" value';
@@ -869,8 +803,8 @@ is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->body, 'whatever', 'right content';
 $tx = $t->redirect($tx);
 is $tx->req->method, 'POST', 'right method';
-is $tx->req->url->to_abs,     'http://example.com/bar', 'right URL';
-is $tx->req->headers->accept, '*/*',                    'right "Accept" value';
+is $tx->req->url->to_abs, 'http://example.com/bar', 'right URL';
+is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->headers->location, undef, 'no "Location" value';
 is $tx->req->body, 'whatever', 'right content';
 is $tx->res->code, undef,      'no status';
@@ -939,8 +873,8 @@ is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->body, 'whatever', 'right content';
 $tx = $t->redirect($tx);
 is $tx->req->method, 'POST', 'right method';
-is $tx->req->url->to_abs,     'https://example.com/bar', 'right URL';
-is $tx->req->headers->accept, '*/*',                     'right "Accept" value';
+is $tx->req->url->to_abs, 'https://example.com/bar', 'right URL';
+is $tx->req->headers->accept, '*/*', 'right "Accept" value';
 is $tx->req->headers->location, undef, 'no "Location" value';
 is $tx->req->body, 'whatever', 'right content';
 is $tx->res->code, undef,      'no status';
@@ -1025,33 +959,6 @@ $tx = $t->tx(CONNECT => 'http://mojolicious.org');
 $tx->res->code(302);
 $tx->res->headers->location('http://example.com/bar');
 is $t->redirect($tx), undef, 'unsupported redirect';
-
-# Promisify
-my $promise = Mojo::Promise->new;
-my (@results, @errors);
-$promise->then(sub { push @results, @_ }, sub { push @errors, @_ });
-$tx = $t->tx(GET => '/');
-$t->promisify($promise, $tx);
-$promise->wait;
-is_deeply \@results, [$tx], 'promise resolved';
-is_deeply \@errors, [], 'promise not rejected';
-$promise = Mojo::Promise->new;
-(@results, @errors) = ();
-$promise->then(sub { push @results, @_ }, sub { push @errors, @_ });
-$tx = $t->websocket('/');
-$t->promisify($promise, $tx);
-$promise->wait;
-is_deeply \@results, [], 'promise not resolved';
-is_deeply \@errors, ['WebSocket handshake failed'], 'promise rejected';
-$promise = Mojo::Promise->new;
-(@results, @errors) = ();
-$promise->then(sub { push @results, @_ }, sub { push @errors, @_ });
-$tx = $t->tx(GET => '/');
-$tx->res->error({message => 'Premature connection close'});
-$t->promisify($promise, $tx);
-$promise->wait;
-is_deeply \@results, [], 'promise not resolved';
-is_deeply \@errors, ['Premature connection close'], 'promise rejected';
 
 # Abstract methods
 eval { Mojo::Transaction->client_read };

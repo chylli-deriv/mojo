@@ -2,12 +2,12 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 use Mojo::Asset::File;
 use Mojo::Content::MultiPart;
 use Mojo::Content::Single;
 use Mojolicious::Lite;
+use Test::Mojo;
 
 get '/request_size' => sub {
   my $c = shift;
@@ -26,7 +26,7 @@ post '/upload' => sub {
 };
 
 post '/multi' => sub {
-  my $c       = shift;
+  my $c = shift;
   my @uploads = map { @{$c->every_param($_)} } @{$c->every_param('name')};
   $c->render(text => join '', map { $_->filename, $_->asset->slurp } @uploads);
 };

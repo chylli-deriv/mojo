@@ -77,8 +77,6 @@ $date = Mojo::Date->new(784111777);
 is "$date", 'Sun, 06 Nov 1994 08:49:37 GMT', 'right format';
 $date = Mojo::Date->new(1305280824);
 is $date->to_string, 'Fri, 13 May 2011 10:00:24 GMT', 'right format';
-$date = Mojo::Date->new('1305280824.23');
-is $date->to_string, 'Fri, 13 May 2011 10:00:24 GMT', 'right format';
 
 # Current time roundtrips
 my $before = time;
@@ -94,7 +92,7 @@ is "$date", 'Thu, 01 Jan 1970 00:00:00 GMT', 'right format';
 is(Mojo::Date->new('Thu, 01 Jan 1970 00:00:00 GMT')->epoch,
   0, 'right epoch value');
 
-# No epoch value
+# Negative epoch value
 $date = Mojo::Date->new;
 ok $date->parse('Mon, 01 Jan 1900 00:00:00'), 'right format';
 is $date->epoch, undef, 'no epoch value';

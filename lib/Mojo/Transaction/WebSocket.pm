@@ -1,8 +1,8 @@
 package Mojo::Transaction::WebSocket;
 use Mojo::Base 'Mojo::Transaction';
 
-use Compress::Raw::Zlib qw(Z_SYNC_FLUSH);
-use List::Util qw(first);
+use Compress::Raw::Zlib 'Z_SYNC_FLUSH';
+use List::Util 'first';
 use Mojo::JSON qw(encode_json j);
 use Mojo::Util qw(decode encode trim);
 use Mojo::WebSocket
@@ -51,7 +51,7 @@ sub connection { shift->handshake->connection }
 sub finish {
   my $self = shift;
 
-  my $close   = $self->{close} = [@_];
+  my $close = $self->{close} = [@_];
   my $payload = $close->[0] ? pack('n', $close->[0]) : '';
   $payload .= encode 'UTF-8', $close->[1] if defined $close->[1];
   $close->[0] //= 1005;
@@ -74,7 +74,7 @@ sub parse_message {
   # Ping/Pong
   my $op = $frame->[4];
   return $self->send([1, 0, 0, 0, WS_PONG, $frame->[5]]) if $op == WS_PING;
-  return undef                                           if $op == WS_PONG;
+  return if $op == WS_PONG;
 
   # Close
   if ($op == WS_CLOSE) {
@@ -84,18 +84,17 @@ sub parse_message {
   }
 
   # Append chunk and check message size
-  @{$self}{qw(op pmc)} = ($op, $self->compressed && $frame->[1])
-    unless exists $self->{op};
+  $self->{op} = $op unless exists $self->{op};
   $self->{message} .= $frame->[5];
   my $max = $self->max_websocket_size;
   return $self->finish(1009) if length $self->{message} > $max;
 
   # No FIN bit (Continuation)
-  return undef unless $frame->[0];
+  return unless $frame->[0];
 
   # "permessage-deflate" extension (handshake and RSV1)
   my $msg = delete $self->{message};
-  if ($self->compressed && $self->{pmc}) {
+  if ($self->compressed && $frame->[1]) {
     my $inflate = $self->{inflate} ||= Compress::Raw::Zlib::Inflate->new(
       Bufsize     => $max,
       LimitOutput => 1,
@@ -356,7 +355,7 @@ Mask outgoing frames with XOR cipher and a random 32-bit key.
   $ws      = $ws->max_websocket_size(1024);
 
 Maximum WebSocket message size in bytes, defaults to the value of the
-C<MOJO_MAX_WEBSOCKET_SIZE> environment variable or C<262144> (256KiB).
+C<MOJO_MAX_WEBSOCKET_SIZE> environment variable or C<262144> (256KB).
 
 =head1 METHODS
 
@@ -376,13 +375,13 @@ Build WebSocket message.
 
   $ws->client_read($data);
 
-Read data client-side. Used to implement user agents such as L<Mojo::UserAgent>.
+Read data client-side, used to implement user agents such as L<Mojo::UserAgent>.
 
 =head2 client_write
 
   my $bytes = $ws->client_write;
 
-Write data client-side. Used to implement user agents such as
+Write data client-side, used to implement user agents such as
 L<Mojo::UserAgent>.
 
 =head2 closed
@@ -485,21 +484,21 @@ Send message or frame non-blocking via WebSocket, the optional drain callback
 will be executed once all data has been written.
 
   # Send "Ping" frame
-  use Mojo::WebSocket qw(WS_PING);
+  use Mojo::WebSocket 'WS_PING';
   $ws->send([1, 0, 0, 0, WS_PING, 'Hello World!']);
 
 =head2 server_read
 
   $ws->server_read($data);
 
-Read data server-side. Used to implement web servers such as
+Read data server-side, used to implement web servers such as
 L<Mojo::Server::Daemon>.
 
 =head2 server_write
 
   my $bytes = $ws->server_write;
 
-Write data server-side. Used to implement web servers such as
+Write data server-side, used to implement web servers such as
 L<Mojo::Server::Daemon>.
 
 =head2 with_compression
@@ -516,6 +515,6 @@ Negotiate subprotocol for this WebSocket connection.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

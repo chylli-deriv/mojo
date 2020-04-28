@@ -73,7 +73,7 @@ learn more about this later on. Internally, routes get compiled to regular
 expressions, so you can get the best of both worlds with a little bit of
 experience.
 
-  /user/show/:id -> qr/(?-xism:^\/user\/show\/([^\/.]+))/
+  /user/show/:id -> qr/(?-xism:^\/user\/show/([^\/.]+))/
 
 A trailing slash in the path is always optional.
 
@@ -103,20 +103,20 @@ expression C<([^/.]+)>.
   /sebastian23/hello  -> /:name/hello -> {name => 'sebastian23'}
   /sebastian 23/hello -> /:name/hello -> {name => 'sebastian 23'}
 
-All placeholders can be surrounded by C<E<lt>> and C<E<gt>> to separate them
-from the surrounding text.
+All placeholders can be surrounded by parentheses to separate them from the
+surrounding text.
 
-  /hello             -> /<:name>hello -> undef
-  /sebastian/23hello -> /<:name>hello -> undef
-  /sebastian.23hello -> /<:name>hello -> undef
-  /sebastianhello    -> /<:name>hello -> {name => 'sebastian'}
-  /sebastian23hello  -> /<:name>hello -> {name => 'sebastian23'}
-  /sebastian 23hello -> /<:name>hello -> {name => 'sebastian 23'}
+  /hello             -> /(:name)hello -> undef
+  /sebastian/23hello -> /(:name)hello -> undef
+  /sebastian.23hello -> /(:name)hello -> undef
+  /sebastianhello    -> /(:name)hello -> {name => 'sebastian'}
+  /sebastian23hello  -> /(:name)hello -> {name => 'sebastian23'}
+  /sebastian 23hello -> /(:name)hello -> {name => 'sebastian 23'}
 
 The colon prefix is optional for standard placeholders that are surrounded by
-C<E<lt>> and C<E<gt>>.
+parentheses.
 
-  /i♥mojolicious -> /<one>♥<two> -> {one => 'i', two => 'mojolicious'}
+  /i♥mojolicious -> /(one)♥(two) -> {one => 'i', two => 'mojolicious'}
 
 =head2 Relaxed placeholders
 
@@ -148,10 +148,6 @@ similar to the regular expression C<(.+)>.
   /sebastian/hello    -> /*name/hello -> {name => 'sebastian'}
   /sebastian23/hello  -> /*name/hello -> {name => 'sebastian23'}
   /sebastian 23/hello -> /*name/hello -> {name => 'sebastian 23'}
-
-They can be useful for manually matching entire file paths.
-
-  /music/rock/song.mp3 -> /music/*filepath -> {filepath => 'rock/song.mp3'}
 
 =head1 BASICS
 
@@ -531,39 +527,6 @@ non-capturing groups C<(?:...)> are fine though.
 This way you get easily readable routes and the raw power of regular
 expressions.
 
-=head2 Placeholder types
-
-And if you have multiple routes using restrictive placeholders you can also turn
-them into placeholder types with L<Mojolicious::Routes/"add_type">.
-
-  # A type with alternatives
-  $r->add_type(futurama_name => ['bender', 'leela']);
-
-  # /fry    -> undef
-  # /bender -> {controller => 'foo', action => 'bar', name => 'bender'}
-  # /leela  -> {controller => 'foo', action => 'bar', name => 'leela'}
-  $r->get('/<name:futurama_name>')->to('foo#bar');
-
-Placeholder types work just like restrictive placeholders, they are just
-reusable with the C<E<lt>placeholder:typeE<gt>> notation.
-
-  # A type adjusting the regular expression
-  $r->add_type(upper => qr/[A-Z]+/);
-
-  # /user/ROOT -> {controller => 'users', action => 'show', name => 'ROOT'}
-  # /user/root -> undef
-  # /user/23   -> undef
-  $r->get('/user/<name:upper>')->to('users#show');
-
-Some types like C<num> are used so commonly that they are available by default.
-
-  # /article/12   -> {controller => 'article', action => 'show', id => 12}
-  # /article/test -> undef
-  $r->get('/article/<id:num>')->to('articles#show');
-
-For a full list of available placeholder types see also
-L<Mojolicious::Routes/"TYPES">.
-
 =head2 Introspection
 
 The command L<Mojolicious::Command::routes> can be used from the command line
@@ -607,9 +570,9 @@ authentication.
   });
   $auth->get('/blackjack')->to('hideout#blackjack');
 
-Broken dispatch chains can be continued by calling
-L<Mojolicious::Plugin::DefaultHelpers/"continue">, this allows for example,
-non-blocking operations to finish before reaching the next dispatch cycle.
+Broken dispatch chains can be continued by calling the method
+L<Mojolicious::Controller/"continue">, this allows for example, non-blocking
+operations to finish before reaching the next dispatch cycle.
 
   my $maybe = $r->under('/maybe' => sub {
     my $c = shift;
@@ -855,7 +818,7 @@ with L<Mojolicious::Routes/"add_shortcut">.
     my $resource = $r->any("/$name")->to("$name#");
 
     # Render a list of resources
-    $resource->get('/')->to('#index')->name($name);
+    $resource->get->to('#index')->name($name);
 
     # Render a form to create a new resource (submitted to "store")
     $resource->get('/create')->to('#create')->name("create_$name");
@@ -1009,7 +972,7 @@ applications under a domain and/or prefix.
   use Mojolicious::Lite;
 
   # Whole application mounted under "/prefix"
-  plugin Mount => {'/prefix' => '/home/sri/myapp/script/myapp'};
+  plugin Mount => {'/prefix' => '/home/sri/myapp.pl'};
 
   # Mount application with subdomain
   plugin Mount => {'test.example.com' => '/home/sri/myapp2.pl'};
@@ -1046,12 +1009,11 @@ be passed along in the C<path> stash value.
   # /foo/*
   $r->any('/foo')->detour('bar#', name => 'Mojo');
 
-A minimal embeddable application is nothing more than a subclass of
-L<Mojolicious>, containing a C<handler> method accepting
-L<Mojolicious::Controller> objects.
+A minimal embeddable application is nothing more than a subclass of L<Mojo>,
+containing a C<handler> method accepting L<Mojolicious::Controller> objects.
 
   package MyApp::Controller::Bar;
-  use Mojo::Base 'Mojolicious';
+  use Mojo::Base 'Mojo';
 
   sub handler {
     my ($self, $c) = @_;
@@ -1061,11 +1023,6 @@ L<Mojolicious::Controller> objects.
   }
 
   1;
-
-The host application will only share very little information with the embedded
-application through the stash. So you cannot currently use route placeholders in
-routes leading to embedded applications, since that would cause problems with
-L<Mojolicious::Controller/"url_for">.
 
 =head2 Application plugins
 
@@ -1112,15 +1069,15 @@ done.
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

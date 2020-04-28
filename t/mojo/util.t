@@ -1,21 +1,20 @@
 use Mojo::Base -strict;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Test::More;
-use Mojo::ByteStream qw(b);
+use Mojo::ByteStream 'b';
+use Mojo::File 'path';
 use Mojo::DeprecationTest;
-use Sub::Util qw(subname);
 
 use Mojo::Util
   qw(b64_decode b64_encode camelize class_to_file class_to_path decamelize),
-  qw(decode dumper encode extract_usage getopt gunzip gzip hmac_sha1_sum),
-  qw(html_unescape html_attr_unescape humanize_bytes md5_bytes md5_sum),
-  qw(monkey_patch punycode_decode punycode_encode quote scope_guard),
-  qw(secure_compare sha1_bytes sha1_sum slugify split_cookie_header),
-  qw(split_header steady_time tablify term_escape trim unindent unquote),
-  qw(url_escape url_unescape xml_escape xor_encode);
+  qw(decode dumper encode extract_usage getopt hmac_sha1_sum html_unescape),
+  qw(html_attr_unescape md5_bytes md5_sum monkey_patch punycode_decode),
+  qw(punycode_encode quote secure_compare sha1_bytes sha1_sum),
+  qw(split_cookie_header split_header steady_time tablify term_escape trim),
+  qw(unindent unquote url_escape url_unescape xml_escape xor_encode);
 
 # camelize
 is camelize('foo_bar_baz'), 'FooBarBaz', 'right camelized result';
@@ -72,7 +71,7 @@ is_deeply split_header('foo="b,; a\" r\"\\\\"'), [['foo', 'b,; a" r"\\']],
 is_deeply split_header('foo = "b a\" r\"\\\\"; bar="ba z"'),
   [['foo', 'b a" r"\\', 'bar', 'ba z']], 'right result';
 my $header = q{</foo/bar>; rel="x"; t*=UTF-8'de'a%20b};
-my $tree   = [['</foo/bar>', undef, 'rel', 'x', 't*', 'UTF-8\'de\'a%20b']];
+my $tree = [['</foo/bar>', undef, 'rel', 'x', 't*', 'UTF-8\'de\'a%20b']];
 is_deeply split_header($header), $tree, 'right result';
 $header
   = 'a=b c; A=b.c; D=/E; a-b=3; expires=Thu, 07 Aug 2008 07:07:59 GMT; Ab;';
@@ -116,7 +115,7 @@ is_deeply split_cookie_header($header), $tree, 'right result';
 
 # extract_usage
 is extract_usage, "extract_usage test!\n", 'right result';
-is extract_usage(curfile->sibling('lib', 'myapp.pl')),
+is extract_usage(path($FindBin::Bin, 'lib', 'myapp.pl')),
   "USAGE: myapp.pl daemon\n\n test\n123\n", 'right result';
 
 =head1 SYNOPSIS
@@ -141,25 +140,6 @@ is_deeply $array, ['stuff'], 'right structure';
   getopt 'c|charset=s' => \my @charset;
   is_deeply \@charset, ['UTF-16'], 'right structure';
   is_deeply \@ARGV,    ['test'],   'right structure';
-}
-
-# getopt (return value)
-{
-  local $SIG{__WARN__} = sub { };
-
-  my $return = getopt ['--lang', 'de'], 'l|lang=s' => \my $lang;
-  is $lang, 'de', 'right result';
-  ok $return, 'right return value';
-
-  $lang   = undef;
-  $return = getopt ['--lnag', 'de'], 'l|lang=s' => \$lang;
-  is $lang, undef, 'right result';
-  ok !$return, 'right return value';
-
-  $lang   = undef;
-  $return = getopt ['--lnag', 'de', '--lang', 'de'], 'l|lang=s' => \$lang;
-  is $lang, 'de', 'right result';
-  ok !$return, 'right return value';
 }
 
 # unindent
@@ -487,8 +467,14 @@ ok !!MojoMonkeyTest->can('yang'), 'function "yang" exists';
 is MojoMonkeyTest::yang(), 'yang', 'right result';
 
 # monkey_patch (with name)
-is subname(MojoMonkeyTest->can('foo')), 'MojoMonkeyTest::foo', 'right name';
-is subname(MojoMonkeyTest->can('bar')), 'MojoMonkeyTest::bar', 'right name';
+SKIP: {
+  skip 'Sub::Util required!', 2
+    unless eval { require Sub::Util; !!Sub::Util->can('set_subname') };
+  is Sub::Util::subname(MojoMonkeyTest->can('foo')), 'MojoMonkeyTest::foo',
+    'right name';
+  is Sub::Util::subname(MojoMonkeyTest->can('bar')), 'MojoMonkeyTest::bar',
+    'right name';
+}
 
 # tablify
 is tablify([["f\r\no o\r\n", 'bar']]),     "fo o  bar\n",      'right result';
@@ -501,9 +487,6 @@ is tablify([[undef, 'yada'], ['yada', undef]]), "      yada\nyada  \n",
 is tablify([['foo', 'bar', 'baz'], ['yada', 'yada', 'yada']]),
   "foo   bar   baz\nyada  yada  yada\n", 'right result';
 is tablify([['a', '', 0], [0, '', 'b']]), "a    0\n0    b\n", 'right result';
-is tablify([[1, 2], [3]]), "1  2\n3\n", 'right result';
-is tablify([[1], [2, 3]]), "1\n2  3\n", 'right result';
-is tablify([[1], [], [2, 3]]), "1\n\n2  3\n", 'right result';
 
 # deprecated
 {
@@ -528,59 +511,6 @@ is term_escape("Accept: */*\x0d\x0a"), "Accept: */*\\x0d\x0a",   'right result';
 is term_escape("\t\b\r\n\f"),          "\\x09\\x08\\x0d\n\\x0c", 'right result';
 is term_escape("\x00\x09\x0b\x1f\x7f\x80\x9f"), '\x00\x09\x0b\x1f\x7f\x80\x9f',
   'right result';
-
-# slugify
-is slugify('a & b'),     'a-b',     'right result';
-is slugify('a &amp; b'), 'a-amp-b', 'right result';
-is slugify(123),         '123',     'right result';
-is slugify(' Jack & Jill like numbers 1,2,3 and 4 and silly characters ?%.$!/'),
-  'jack-jill-like-numbers-123-and-4-and-silly-characters', 'right result';
-is slugify("Un \x{e9}l\x{e9}phant \x{e0} l'or\x{e9}e du bois"),
-  'un-elephant-a-loree-du-bois', 'right result';
-is slugify("Un \x{e9}l\x{e9}phant \x{e0} l'or\x{e9}e du bois", 1),
-  "un-\x{e9}l\x{e9}phant-\x{e0}-lor\x{e9}e-du-bois", 'right result';
-is slugify('Hello, World!'), 'hello-world', 'right result';
-is slugify('spam & eggs'),   'spam-eggs',   'right result';
-is slugify('spam & ıçüş',  1), 'spam-ıçüş', 'right result';
-is slugify('foo ıç bar',     1), 'foo-ıç-bar',  'right result';
-is slugify('    foo ıç bar', 1), 'foo-ıç-bar',  'right result';
-is slugify('你好',           1), '你好',        'right result';
-
-# gzip/gunzip
-my $uncompressed = 'a' x 1000;
-my $compressed   = gzip $uncompressed;
-isnt $compressed, $uncompressed, 'string changed';
-ok length $compressed < length $uncompressed, 'string is shorter';
-my $result = gunzip $compressed;
-is $result, $uncompressed, 'same string';
-
-# scope_guard
-$test = 'a';
-{
-  my $guard = scope_guard sub { $test .= 'c' };
-  $test .= 'b';
-}
-$test .= 'd';
-is $test, 'abcd', 'right order';
-
-# humanize_bytes
-is humanize_bytes(0),     '0B',     'zero Bytes';
-is humanize_bytes(1),     '1B',     'one Byte';
-is humanize_bytes(-1023), '-1023B', 'negative Bytes';
-is humanize_bytes(1024),  '1KiB',   'one KiB';
-is humanize_bytes(1025),  '1KiB',   'one KiB';
-is humanize_bytes(1024 * 1024), '1MiB', 'one MiB';
-is humanize_bytes(1024 * 1024 * 1024), '1GiB', 'one GiB';
-is humanize_bytes(1024 * 1024 * 1024 * 1024), '1TiB', 'one TiB';
-is humanize_bytes(3000),           '2.9KiB',  'almost 3KiB';
-is humanize_bytes(-3000),          '-2.9KiB', 'almost -3KiB';
-is humanize_bytes(13443399680),    '13GiB',   'two digits GiB';
-is humanize_bytes(8007188480),     '7.5GiB',  'smaller GiB';
-is humanize_bytes(-8007188480),    '-7.5GiB', 'negative smaller GiB';
-is humanize_bytes(-1099511627776), '-1TiB',   'negative smaller TiB';
-is humanize_bytes(717946880),      '685MiB',  'large MiB';
-is humanize_bytes(-717946880),     '-685MiB', 'large negative MiB';
-is humanize_bytes(245760),         '240KiB',  'less than a MiB';
 
 # Hide DATA usage from error messages
 eval { die 'whatever' };

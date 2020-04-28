@@ -65,62 +65,6 @@ connections concurrently.
 
 In L<Mojolicious> this event loop is L<Mojo::IOLoop>.
 
-=head2 Reverse proxy
-
-A reverse proxy architecture is a deployment technique used in many production
-environments, where a I<reverse proxy> server is put in front of your
-application to act as the endpoint accessible by external clients. It can
-provide a lot of benefits, like terminating SSL connections from the outside,
-limiting the number of concurrent open sockets towards the Mojolicious
-application (or even using Unix sockets), balancing load across multiple
-instances, or supporting several applications through the same IP/port.
-
-                   ..........................................
-                   :                                        :
-   +--------+      :  +-----------+      +---------------+  :
-   |        |-------->|           |      |               |  :
-   | client |      :  |  reverse  |----->|  Mojolicious  |  :
-   |        |<--------|   proxy   |      |  application  |  :
-   +--------+      :  |           |<-----|               |  :
-                   :  +-----------+      +---------------+  :
-                   :                                        :
-                   .. system boundary (e.g. same host) ......
-
-This setup introduces some problems, though: the application will receive
-requests from the reverse proxy instead of the original client; the
-address/hostname where your application lives internally will be different from
-the one visible from the outside; and if terminating SSL, the reverse proxy
-exposes services via HTTPS while using HTTP towards the Mojolicious application.
-
-As an example, compare a sample request from the client and what the Mojolicious
-application receives:
-
-   client                       reverse proxy                Mojolicious app
-    __|__              _______________|______________             ____|____
-   /     \            /                              \           /         \
-   1.2.3.4 --HTTPS--> api.example.com      10.20.30.39 --HTTP--> 10.20.30.40
-
-   GET /foo/1 HTTP/1.1                |    GET /foo/1 HTTP/1.1
-   Host: api.example.com              |    Host: 10.20.30.40
-   User-Agent: Firefox                |    User-Agent: ShinyProxy/1.2
-   ...                                |    ...
-
-However, now the client address is no longer available (which might be useful
-for analytics, or Geo-IP) and URLs generated via
-L<Mojolicious::Controller/"url_for"> will look like this:
-
-   http://10.20.30.40/bar/2
-
-instead of something meaningful for the client, like this:
-
-   https://api.example.com/bar/2
-
-To solve these problems, you can configure your reverse proxy to send the
-missing data (see L</Nginx> and L</"Apache/mod_proxy">) and tell your
-application about it by setting the environment variable C<MOJO_REVERSE_PROXY>.
-For finer control, L</Rewriting> includes examples of how the changes could be
-implemented manually.
-
 =head1 DEPLOYMENT
 
 Getting L<Mojolicious> and L<Mojolicious::Lite> applications running on
@@ -210,6 +154,7 @@ configuration file like this.
   [Service]
   Type=simple
   ExecStart=/home/sri/myapp/script/my_app prefork -m production -l http://*:8080
+  KillMode=process
 
   [Install]
   WantedBy=multi-user.target
@@ -253,7 +198,7 @@ L<Mojolicious::Lite> applications.
   $ hypnotoad ./script/my_app
 
 Many configuration settings can be tweaked right from within your application
-with L<Mojolicious/"config">, for a full list see
+with L<Mojo/"config">, for a full list see
 L<Mojo::Server::Hypnotoad/"SETTINGS">.
 
   use Mojolicious::Lite;
@@ -560,7 +505,7 @@ latency backend web services.
   # Search MetaCPAN for "mojolicious"
   get '/' => sub {
     my $c = shift;
-    $c->ua->get('fastapi.metacpan.org/v1/module/_search?q=mojolicious' => sub {
+    $c->ua->get('api.metacpan.org/v0/module/_search?q=mojolicious' => sub {
       my ($ua, $tx) = @_;
       $c->render('metacpan', hits => $tx->result->json->{hits}{hits});
     });
@@ -587,175 +532,46 @@ continuation-passing style.
 =head2 Synchronizing non-blocking operations
 
 Multiple non-blocking operations, such as concurrent requests, can be easily
-synchronized with promises and L<Mojo::Promise/"all">. You create
-L<Mojo::Promise> objects manually or use methods like L<Mojo::UserAgent/"get_p">
-that create them for you.
+synchronized with L<Mojolicious::Plugin::DefaultHelpers/"delay">, which can help
+you avoid deep nested closures that often result from continuation-passing
+style.
 
   use Mojolicious::Lite;
-  use Mojo::Promise;
   use Mojo::URL;
 
   # Search MetaCPAN for "mojo" and "minion"
   get '/' => sub {
     my $c = shift;
 
-    # Create two promises
-    my $url   = Mojo::URL->new('http://fastapi.metacpan.org/v1/module/_search');
-    my $mojo   = $c->ua->get_p($url->clone->query({q => 'mojo'}));
-    my $minion = $c->ua->get_p($url->clone->query({q => 'minion'}));
+    # Prepare response in two steps
+    $c->delay(
 
-    # Render a response once both promises have been resolved
-    Mojo::Promise->all($mojo, $minion)->then(sub {
-      my ($mojo, $minion) = @_;
-      $c->render(json => {
-        mojo   => $mojo->[0]->result->json('/hits/hits/0/_source/release'),
-        minion => $minion->[0]->result->json('/hits/hits/0/_source/release')
-      });
-    })->catch(sub {
-      my $err = shift;
-      $c->reply->exception($err);
-    })->wait;
+      # Concurrent requests
+      sub {
+        my $delay = shift;
+        my $url   = Mojo::URL->new('api.metacpan.org/v0/module/_search');
+        $url->query({sort => 'date:desc'});
+        $c->ua->get($url->clone->query({q => 'mojo'})   => $delay->begin);
+        $c->ua->get($url->clone->query({q => 'minion'}) => $delay->begin);
+      },
+
+      # Delayed rendering
+      sub {
+        my ($delay, $mojo, $minion) = @_;
+        $c->render(json => {
+          mojo   => $mojo->result->json('/hits/hits/0/_source/release'),
+          minion => $minion->result->json('/hits/hits/0/_source/release')
+        });
+      }
+    );
   };
 
   app->start;
 
-To create promises manually you just wrap your continuation-passing style APIs
-in functions that return promises. Here's an example for how
-L<Mojo::UserAgent/"get_p"> works internally.
-
-  use Mojo::UserAgent;
-  use Mojo::Promise;
-
-  # Wrap a user agent method with a promise
-  my $ua = Mojo::UserAgent->new;
-  sub get_p {
-    my $promise = Mojo::Promise->new;
-    $ua->get(@_ => sub {
-      my ($ua, $tx) = @_;
-      my $err = $tx->error;
-      $promise->resolve($tx) if !$err || $err->{code};
-      $promise->reject($err->{message});
-    });
-    return $promise;
-  }
-
-  # Use our new promise generating function
-  get_p('https://mojolicious.org')->then(sub {
-    my $tx = shift;
-    say $tx->result->dom->at('title')->text;
-  })->wait;
-
-Promises have three states, they start out as C<pending> and you call
-L<Mojo::Promise/"resolve"> to transition them to C<fulfilled>, or
-L<Mojo::Promise/"reject"> to transition them to C<rejected>.
-
-=head2 async/await
-
-And if you have L<Future::AsyncAwait> installed you can make using promises even
-easier. The C<async> and C<await> keywords are enabled with the C<-async_await>
-flag of L<Mojo::Base>, and make the use of closures with promises completely
-optional.
-
-  use Mojo::Base -strict, -async_await;
-
-The C<async> keyword is placed before the C<sub> keyword, and means that this
-function always returns a promise. Returned values that are not L<Mojo::Promise>
-objects will be wrapped in a resolved promise automatically. And if an exception
-gets thrown in the function it will result in a rejected promise.
-
-  use Mojo::Base -strict, -async_await;
-
-  async sub hello_p {
-    return 'Hello Mojo!';
-  }
-
-  hello_p()->then(sub { say @_ })->wait;
-
-The C<await> keyword on the other hand makes Perl wait for the promise to be
-settled. It then returns the fulfillment values or throws an exception with the
-rejection reason. While waiting, the event loop is free to perform other tasks
-however, so no resources are wasted.
-
-  use Mojo::Base -strict, -signatures, -async_await;
-  use Mojo::UserAgent;
-  use Mojo::URL;
-
-  my $ua = Mojo::UserAgent->new;
-
-  # Search MetaCPAN non-blocking for multiple terms sequentially
-  async sub search_cpan_p ($terms) {
-    my $cpan = Mojo::URL->new('http://fastapi.metacpan.org/v1/module/_search');
-    my @urls = map { $cpan->clone->query(q => $_) } @$terms;
-
-    for my $url (@urls) {
-      my $tx = await $ua->get_p($url);
-      say $tx->result->json('/hits/hits/0/_source/release');
-    }
-  }
-
-  search_cpan_p(['mojo', 'minion'])->wait;
-
-The loop above performs all requests sequentially, awaiting a result before
-sending the next request. But you can also perform those requests concurrently
-instead, by using methods like L<Mojo::Promise/"all"> to combine multiple
-promises before awaiting the results.
-
-  use Mojo::Base -strict, -signatures, -async_await;
-  use Mojo::Promise;
-  use Mojo::UserAgent;
-  use Mojo::URL;
-
-  my $ua = Mojo::UserAgent->new;
-
-  # Search MetaCPAN non-blocking for multiple terms concurrently
-  async sub search_cpan_p ($terms) {
-    my $cpan = Mojo::URL->new('http://fastapi.metacpan.org/v1/module/_search');
-    my @urls = map { $cpan->clone->query(q => $_) } @$terms;
-
-    my @promises = map { $ua->get_p($_) } @urls;
-    my @results  = await Mojo::Promise->all(@promises);
-    for my $result (@results) {
-      say $result->[0]->result->json('/hits/hits/0/_source/release');
-    }
-  }
-
-  search_cpan_p(['mojo', 'minion'])->wait;
-
-All of this also means that you can use normal Perl exception handling again.
-Even many 3rd party exception handling modules from CPAN work just fine.
-
-  use Mojo::Base -strict, -async_await;
-  use Mojo::Promise;
-
-  # Catch a non-blocking exception
-  async sub hello_p {
-    eval { await Mojo::Promise->reject('This is an exception') };
-    if (my $err = $@) { warn "Error: $err" }
-  }
-
-  hello_p()->wait;
-
-And it works just the same in L<Mojolicious> and L<Mojolicious::Lite>
-applications. Just declare your actions with the C<async> keyword and use
-C<await> to wait for promises to be C<fulfilled> or C<rejected>.
-
-  use Mojolicious::Lite -signatures, -async_await;
-
-  # Request HTML titles from two sites non-blocking
-  get '/' => async sub ($c) {
-    my $mojo_tx    = await $c->ua->get_p('https://mojolicious.org');
-    my $mojo_title = $mojo_tx->result->dom->at('title')->text;
-    my $cpan_tx    = await $c->ua->get_p('https://metacpan.org');
-    my $cpan_title = $cpan_tx->result->dom->at('title')->text;
-
-    $c->render(json => {mojo => $mojo_title, cpan => $cpan_title});
-  };
-
-  app->start;
-
-Promises returned by actions will automatically get the default L<Mojolicious>
-exception handler attached. Making it much harder to ever miss a non-blocking
-exception again, even if you forgot to handle it yourself.
+You simply use L<Mojo::IOLoop::Delay/"begin"> to generate code references that
+can be passed to L<Mojo::UserAgent/"get"> as callbacks. These code references
+then capture arguments passed to them, and pass them on to the next step in the
+chain, once all generated code references have been executed.
 
 =head2 Timers
 
@@ -810,7 +626,7 @@ created at startup time.
   # Check title in the background every 10 seconds
   my $title = 'Got no title yet.';
   Mojo::IOLoop->recurring(10 => sub {
-    app->ua->get('https://mojolicious.org' => sub {
+    app->ua->get('http://mojolicious.org' => sub {
       my ($ua, $tx) = @_;
       $title = $tx->result->dom->at('title')->text;
     });
@@ -971,13 +787,43 @@ the WebSocket connection has been closed.
 
 You can activate C<permessage-deflate> compression with
 L<Mojo::Transaction::WebSocket/"with_compression">, this can result in much
-better performance, but also increases memory usage by up to 300KiB per
+better performance, but also increases memory usage by up to 300KB per
 connection.
 
   my $proto = $c->tx->with_protocols('v2.proto', 'v1.proto');
 
 You can also use L<Mojo::Transaction::WebSocket/"with_protocols"> to negotiate a
 subprotocol.
+
+=head2 Testing WebSocket web services
+
+While the message flow on WebSocket connections can be rather dynamic, it more
+often than not is quite predictable, which allows this rather pleasant
+L<Test::Mojo> API to be used.
+
+  use Test::More;
+  use Test::Mojo;
+
+  # Include application
+  use FindBin;
+  require "$FindBin::Bin/../echo.pl";
+
+  # Test echo web service
+  my $t = Test::Mojo->new;
+  $t->websocket_ok('/echo')
+    ->send_ok('Hello Mojo!')
+    ->message_ok
+    ->message_is('echo: Hello Mojo!')
+    ->finish_ok;
+
+  # Test JSON web service
+  $t->websocket_ok('/echo.json')
+    ->send_ok({json => {test => [1, 2, 3]}})
+    ->message_ok
+    ->json_message_is('/test', [1, 2, 3])
+    ->finish_ok;
+
+  done_testing();
 
 =head2 EventSource web service
 
@@ -1046,7 +892,7 @@ L<Mojo::EventEmitter>, with ready-to-use events on almost all layers, and which
 can be combined to solve some of the hardest problems in web development.
 
   use Mojolicious::Lite;
-  use Scalar::Util qw(weaken);
+  use Scalar::Util 'weaken';
 
   # Intercept multipart uploads and log each chunk received
   hook after_build_tx => sub {
@@ -1121,6 +967,40 @@ other event loops like L<AnyEvent> to just work.
   };
 
   app->start;
+
+Who actually controls the event loop backend is not important.
+
+  use Mojo::UserAgent;
+  use EV;
+  use AnyEvent;
+
+  # Search MetaCPAN for "mojolicious"
+  my $cv = AE::cv;
+  my $ua = Mojo::UserAgent->new;
+  $ua->get('api.metacpan.org/v0/module/_search?q=mojolicious' => sub {
+    my ($ua, $tx) = @_;
+    $cv->send($tx->result->json('/hits/hits/0/_source/release'));
+  });
+  say $cv->recv;
+
+You could, for example, just embed the built-in web server into an L<AnyEvent>
+application.
+
+  use Mojolicious::Lite;
+  use Mojo::Server::Daemon;
+  use EV;
+  use AnyEvent;
+
+  # Normal action
+  get '/' => {text => 'Hello World!'};
+
+  # Connect application with web server and start accepting connections
+  my $daemon
+    = Mojo::Server::Daemon->new(app => app, listen => ['http://*:8080']);
+  $daemon->start;
+
+  # Let AnyEvent take control
+  AE::cv->recv;
 
 =head1 USER AGENT
 
@@ -1200,7 +1080,7 @@ L<Mojo::Message/"json">.
   my $ua = Mojo::UserAgent->new;
 
   # Search MetaCPAN for "mojolicious" and list latest releases
-  my $url = Mojo::URL->new('http://fastapi.metacpan.org/v1/release/_search');
+  my $url = Mojo::URL->new('http://api.metacpan.org/v0/release/_search');
   $url->query({q => 'mojolicious', sort => 'date:desc'});
   for my $hit (@{$ua->get($url)->result->json->{hits}{hits}}) {
     say "$hit->{_source}{name} ($hit->{_source}{author})";
@@ -1260,7 +1140,7 @@ content repeatedly for multiple requests.
   $ua->put('http://example.com/upload'  => stream => '/home/sri/mojo.png');
   $ua->post('http://example.com/upload' => stream => '/home/sri/minion.png');
 
-The C<json>, C<form> and C<multipart> content generators are always available.
+The C<json> and C<form> content generators are always available.
 
   use Mojo::UserAgent;
 
@@ -1269,17 +1149,14 @@ The C<json>, C<form> and C<multipart> content generators are always available.
   my $tx = $ua->patch('http://api.example.com' => json => {foo => 'bar'});
 
   # Send query parameters via GET
-  my $tx2 = $ua->get('search.example.com' => form => {q => 'test'});
+  my $tx2 = $ua->get('http://search.example.com' => form => {q => 'test'});
 
   # Send "application/x-www-form-urlencoded" content via POST
   my $tx3 = $ua->post('http://search.example.com' => form => {q => 'test'});
 
   # Send "multipart/form-data" content via PUT
-  my $tx4 = $ua->put(
-    'upload.example.com' => form => {test => {content => 'Hello World!'}});
-
-  # Send custom multipart content via PUT
-  my $tx5 = $ua->put('api.example.com' => multipart => ['Hello', 'World!']);
+  my $tx4 = $ua->put('http://upload.example.com' =>
+    form => {test => {content => 'Hello World!'}});
 
 For more information about available content generators see also
 L<Mojo::UserAgent::Transactor/"tx">.
@@ -1288,21 +1165,21 @@ L<Mojo::UserAgent::Transactor/"tx">.
 
 When downloading large files with L<Mojo::UserAgent> you don't have to worry
 about memory usage at all, because it will automatically stream everything
-above 250KiB into a temporary file, which can then be moved into a permanent
-file with L<Mojo::Message/"save_to">.
+above 250KB into a temporary file, which can then be moved into a permanent
+file with L<Mojo::Asset::File/"move_to">.
 
   use Mojo::UserAgent;
 
   # Fetch the latest Mojolicious tarball
   my $ua = Mojo::UserAgent->new(max_redirects => 5);
-  my $tx = $ua->get('https://www.github.com/mojolicious/mojo/tarball/master');
-  $tx->result->save_to('mojo.tar.gz');
+  my $tx = $ua->get('https://www.github.com/kraih/mojo/tarball/master');
+  $tx->result->content->asset->move_to('mojo.tar.gz');
 
-To protect you from excessively large files there is also a limit of 2GiB by
+To protect you from excessively large files there is also a limit of 2GB by
 default, which you can tweak with the attribute
 L<Mojo::UserAgent/"max_response_size">.
 
-  # Increase limit to 10GiB
+  # Increase limit to 10GB
   $ua->max_response_size(10737418240);
 
 =head2 Large file upload
@@ -1387,11 +1264,11 @@ keep many concurrent connections active at the same time.
 
   # Concurrent non-blocking requests
   my $ua = Mojo::UserAgent->new;
-  $ua->get('https://metacpan.org/search?q=mojo' => sub {
+  $ua->get('http://metacpan.org/search?q=mojo' => sub {
     my ($ua, $mojo) = @_;
     say $mojo->result->dom->at('title')->text;
   });
-  $ua->get('https://metacpan.org/search?q=minion' => sub {
+  $ua->get('http://metacpan.org/search?q=minion' => sub {
     my ($ua, $minion) = @_;
     say $minion->result->dom->at('title')->text;
   });
@@ -1428,10 +1305,10 @@ batches.
     $ua->get($url => sub {
       my ($ua, $tx) = @_;
       say "$url: ", $tx->result->dom->at('title')->text;
+      $end->();
 
       # Next request
       $fetch->();
-      $end->();
     });
   };
 
@@ -1445,27 +1322,30 @@ the same host, or the operators might be forced to block your access.
 
 =head2 Concurrent blocking requests
 
-You might have seen L<Mojo::Promise/"wait"> already in some examples
-above. It is used to make non-blocking operations portable, allowing them to
-work inside an already running event loop or start one on demand.
+You can emulate blocking behavior by using L<Mojo::IOLoop/"delay"> to
+synchronize multiple non-blocking requests.
 
   use Mojo::UserAgent;
-  use Mojo::Promise;
+  use Mojo::IOLoop;
 
-  # Synchronize non-blocking requests with promises
-  my $ua = Mojo::UserAgent->new;
-  my $mojo   = $ua->get_p('https://metacpan.org/search?q=mojo');
-  my $minion = $ua->get_p('https://metacpan.org/search?q=minion');
-  Mojo::Promise->all($mojo, $minion)->then(sub {
-    my ($mojo, $minion) = @_;
-    say $mojo->[0]->result->dom->at('title')->text;
-    say $minion->[0]->result->dom->at('title')->text;
-  })->wait;
+  # Synchronize non-blocking requests
+  my $ua    = Mojo::UserAgent->new;
+  my $delay = Mojo::IOLoop->delay(sub {
+    my ($delay, $mojo, $minion) = @_;
+    say $mojo->result->dom->at('title')->text;
+    say $minion->result->dom->at('title')->text;
+  });
+  $ua->get('http://metacpan.org/search?q=mojo'   => $delay->begin);
+  $ua->get('http://metacpan.org/search?q=minion' => $delay->begin);
+  $delay->wait;
+
+The call to L<Mojo::IOLoop::Delay/"wait"> makes this code portable, it can now
+work inside an already running event loop or start one on demand.
 
 =head2 WebSockets
 
 WebSockets are not just for the server-side, you can use
-L<Mojo::UserAgent/"websocket_p"> to open new connections, which are always
+L<Mojo::UserAgent/"websocket"> to open new connections, which are always
 non-blocking. The WebSocket handshake uses HTTP, and is a normal C<GET> request
 with a few additional headers. It can even contain cookies, and is followed by
 a C<101> response from the server, notifying our user agent that the connection
@@ -1473,21 +1353,20 @@ has been established and it can start using the bi-directional WebSocket
 protocol.
 
   use Mojo::UserAgent;
-  use Mojo::Promise;
+  use Mojo::IOLoop;
 
   # Open WebSocket to echo service
   my $ua = Mojo::UserAgent->new;
-  $ua->websocket_p('ws://echo.websocket.org')->then(sub {
-    my $tx = shift;
+  $ua->websocket('ws://echo.websocket.org' => sub {
+    my ($ua, $tx) = @_;
 
-    # Prepare a followup promise so we can wait for messages
-    my $promise = Mojo::Promise->new;
+    # Check if WebSocket handshake was successful
+    say 'WebSocket handshake failed!' and return unless $tx->is_websocket;
 
     # Wait for WebSocket to be closed
     $tx->on(finish => sub {
       my ($tx, $code, $reason) = @_;
       say "WebSocket closed with status $code.";
-      $promise->resolve;
     });
 
     # Close WebSocket after receiving one message
@@ -1499,15 +1378,10 @@ protocol.
 
     # Send a message to the server
     $tx->send('Hi!');
+  });
 
-    # Insert a new promise into the promise chain
-    return $promise;
-  })->catch(sub {
-    my $err = shift;
-
-    # Handle failed WebSocket handshakes and other exceptions
-    warn "WebSocket error: $err";
-  })->wait;
+  # Start event loop if necessary
+  Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
 
 =head2 UNIX domain sockets
 
@@ -1518,7 +1392,7 @@ C<http+unix://> and C<ws+unix://> schemes, and pass along a percent encoded path
 (C</> becomes C<%2F>) instead of a hostname.
 
   use Mojo::UserAgent;
-  use Mojo::Promise;
+  use Mojo::IOLoop;
 
   # GET request via UNIX domain socket "/tmp/foo.sock"
   my $ua = Mojo::UserAgent->new;
@@ -1529,24 +1403,20 @@ C<http+unix://> and C<ws+unix://> schemes, and pass along a percent encoded path
   say $tx->result->body;
 
   # WebSocket connection via UNIX domain socket "/tmp/baz.sock"
-  $ua->websocket_p('ws+unix://%2Ftmp%2Fbaz.sock/echo')->then(sub {
-    my $tx = shift;
+  $ua->websocket('ws+unix://%2Ftmp%2Fbaz.sock/echo' => sub {
+    my ($ua, $tx) = @_;
 
-    my $promise = Mojo::Promise->new;
-    $tx->on(finish => sub { $promise->resolve });
+    say 'WebSocket handshake failed!' and return unless $tx->is_websocket;
 
     $tx->on(message => sub {
       my ($tx, $msg) = @_;
       say "WebSocket message: $msg";
       $tx->finish;
     });
-    $tx->send('Hi!');
 
-    return $promise;
-  })->catch(sub {
-    my $err = shift;
-    warn "WebSocket error: $err";
-  })->wait;
+    $tx->send('Hi!');
+  });
+  Mojo::IOLoop->start unless Mojo::IOLoop->is_running;
 
 You can set the C<Host> header manually to pass along a hostname.
 
@@ -1557,47 +1427,28 @@ command L<Mojolicious::Command::get> that is about to change. You can just pick
 the parts that actually matter with the CSS selectors from L<Mojo::DOM> and
 JSON Pointers from L<Mojo::JSON::Pointer>.
 
-  $ mojo get https://mojolicious.org 'head > title'
+  $ mojo get http://mojolicious.org 'head > title'
 
 How about a list of all id attributes?
 
-  $ mojo get https://mojolicious.org '*' attr id
+  $ mojo get http://mojolicious.org '*' attr id
 
 Or the text content of all heading tags?
 
-  $ mojo get https://mojolicious.org 'h1, h2, h3' text
+  $ mojo get http://mojolicious.org 'h1, h2, h3' text
 
 Maybe just the text of the third heading?
 
-  $ mojo get https://mojolicious.org 'h1, h2, h3' 3 text
+  $ mojo get http://mojolicious.org 'h1, h2, h3' 3 text
 
 You can also extract all text from nested child elements.
 
-  $ mojo get https://mojolicious.org '#mojobar' all
+  $ mojo get http://mojolicious.org '#mojobar' all
 
 The request can be customized as well.
 
-  $ mojo get -M POST -H 'X-Bender: Bite my shiny metal ass!' http://google.com
-
-Store response data by redirecting C<STDOUT>.
-
-  $ mojo get mojolicious.org > example.html
-
-Pass request data by redirecting C<STDIN>.
-
-  $ mojo get -M PUT mojolicious.org < example.html
-
-Or use the output of another program.
-
-  $ echo 'Hello World' | mojo get -M PUT https://mojolicious.org
-
-Submit forms as C<application/x-www-form-urlencoded> content.
-
-  $ mojo get -M POST -f 'q=Mojo' -f 'size=5' https://metacpan.org/search
-
-And upload files as C<multipart/form-data> content.
-
-  $ mojo get -M POST -f 'upload=@example.html' mojolicious.org
+  $ mojo get -M POST -c 'Hello!' http://mojolicious.org
+  $ mojo get -H 'X-Bender: Bite my shiny metal ass!' http://google.com
 
 You can follow redirects and view the headers for all messages.
 
@@ -1605,7 +1456,7 @@ You can follow redirects and view the headers for all messages.
 
 Extract just the information you really need from JSON data structures.
 
-  $ mojo get https://fastapi.metacpan.org/v1/author/SRI /name
+  $ mojo get https://api.metacpan.org/v0/author/SRI /name
 
 This can be an invaluable tool for testing your applications.
 
@@ -1628,7 +1479,7 @@ Basic authentication data will be automatically extracted from the
 C<Authorization> header.
 
   use Mojolicious::Lite;
-  use Mojo::Util qw(secure_compare);
+  use Mojo::Util 'secure_compare';
 
   get '/' => sub {
     my $c = shift;
@@ -1663,7 +1514,7 @@ appended with a C<.conf> extension (C<myapp.conf>).
 
 Configuration files themselves are just Perl scripts that return a hash
 reference with configuration settings of your choice. All those settings are
-then available through the method L<Mojolicious/"config"> and the helper
+then available through the method L<Mojo/"config"> and the helper
 L<Mojolicious::Plugin::DefaultHelpers/"config">.
 
   use Mojolicious::Lite;
@@ -1718,7 +1569,7 @@ difference to normal plugins is that you load them using their full class name.
 
   use Mojolicious::Lite;
 
-  use lib qw(lib);
+  use lib 'lib';
 
   plugin 'MyApp::Plugin::MyHelpers';
 
@@ -1819,15 +1670,13 @@ actually much easier than you might think.
   $ mv templates lib/MyApp/
 
 The trick is to move the C<public> and C<templates> directories so they can get
-automatically installed with the modules. Additionally author commands from the
-C<Mojolicious::Command::Author> namespace are not usually wanted by an
-installed application so they can be excluded.
+automatically installed with the modules.
 
   # Application
   package MyApp;
   use Mojo::Base 'Mojolicious';
 
-  use Mojo::File qw(curfile);
+  use Mojo::File 'path';
   use Mojo::Home;
 
   # Every CPAN module needs a version
@@ -1837,7 +1686,7 @@ installed application so they can be excluded.
     my $self = shift;
 
     # Switch to installable home directory
-    $self->home(Mojo::Home->new(curfile->sibling('MyApp')));
+    $self->home(Mojo::Home->new(path(__FILE__)->sibling('MyApp')));
 
     # Switch to installable "public" directory
     $self->static->paths->[0] = $self->home->child('public');
@@ -1845,8 +1694,7 @@ installed application so they can be excluded.
     # Switch to installable "templates" directory
     $self->renderer->paths->[0] = $self->home->child('templates');
 
-    # Exclude author commands
-    $self->commands->namespaces(['Mojolicious::Commands']);
+    $self->plugin('PODRenderer');
 
     my $r = $self->routes;
     $r->get('/welcome')->to('example#welcome');
@@ -1863,8 +1711,8 @@ to the proper shebang during installation.
   use strict;
   use warnings;
 
-  use Mojo::File qw(curfile);
-  use lib curfile->dirname->sibling('lib')->to_string;
+  use FindBin;
+  BEGIN { unshift @INC, "$FindBin::Bin/../lib" }
   use Mojolicious::Commands;
 
   # Start command line interface for application
@@ -1912,15 +1760,15 @@ And you can use all the commands from L<Mojolicious::Commands>.
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

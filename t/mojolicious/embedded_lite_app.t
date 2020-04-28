@@ -7,8 +7,8 @@ BEGIN {
 
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Mojolicious::Lite;
 use Test::Mojo;
@@ -57,7 +57,7 @@ get '/' => sub {
 };
 
 package MyTestApp::Basic;
-use Mojo::Base 'Mojolicious';
+use Mojo::Base 'Mojo';
 
 sub handler {
   my ($self, $c) = @_;
@@ -75,14 +75,14 @@ plugin 'PluginWithEmbeddedApp';
 app->routes->namespaces(['MyTestApp']);
 
 # Mount full external application a few times
-my $external = curfile->sibling('external', 'myapp.pl');
+my $external = "$FindBin::Bin/external/myapp.pl";
 plugin Mount => {'/x/1' => $external};
 my $route = plugin(Mount => ('/x/♥' => $external))->to(message => 'works 2!');
 is $route->to->{message}, 'works 2!', 'right message';
 is $route->pattern->defaults->{app}->same_name, 'myapp', 'right name';
-plugin Mount => {'/y/1' => curfile->sibling('external', 'myapp2.pl')};
+plugin Mount => {'/y/1'            => "$FindBin::Bin/external/myapp2.pl"};
 plugin Mount => {'mojolicious.org' => $external};
-plugin(Mount => ('/y/♥' => curfile->sibling('external', 'myapp2.pl')))
+plugin(Mount => ('/y/♥' => "$FindBin::Bin/external/myapp2.pl"))
   ->to(message => 'works 3!');
 plugin Mount => {'MOJOLICIOUS.ORG/' => $external};
 plugin Mount => {'*.example.com'    => $external};

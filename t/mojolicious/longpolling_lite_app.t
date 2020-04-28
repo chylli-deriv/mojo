@@ -2,10 +2,10 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 use Mojo::IOLoop;
 use Mojolicious::Lite;
+use Test::Mojo;
 
 package MyTestApp::Controller;
 use Mojo::Base 'Mojolicious::Controller';
@@ -158,12 +158,27 @@ get '/too_long' => sub {
   $c->write('Waiting forever!');
 };
 
+my $steps;
+helper steps => sub {
+  my $c = shift;
+  $c->delay(
+    sub { Mojo::IOLoop->next_tick(shift->begin) },
+    sub {
+      Mojo::IOLoop->next_tick(shift->begin);
+      $c->param('die') ? die 'intentional' : $c->render(text => 'second');
+      $c->res->headers->header('X-Next' => 'third');
+    },
+    sub { $steps = $c->res->headers->header('X-Next') }
+  );
+};
+
+get '/steps' => sub { shift->steps };
+
 my $t = Test::Mojo->new;
 
 # Stream without delay and finish
-$t->app->log->level('debug')->unsubscribe('message');
 my $log = '';
-my $cb  = $t->app->log->on(message => sub { $log .= pop });
+my $cb = $t->app->log->on(message => sub { $log .= pop });
 my $stash;
 $t->app->plugins->once(before_dispatch => sub { $stash = shift->stash });
 $t->get_ok('/write')->status_is(200)->header_is(Server => 'Mojolicious (Perl)')
@@ -220,7 +235,7 @@ is $stash->{finished}, 1, 'finish event has been emitted once';
 ok $stash->{destroyed}, 'controller has been destroyed';
 
 # Interrupted by raising an error
-my $tx     = $t->ua->build_tx(GET => '/longpoll/chunked');
+my $tx = $t->ua->build_tx(GET => '/longpoll/chunked');
 my $buffer = '';
 $tx->res->content->unsubscribe('read')->on(
   read => sub {
@@ -259,7 +274,7 @@ is $stash->{order}, 1, 'the drain event was emitted on the next reactor tick';
 
 # Static file with cookies and session
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/longpoll/static')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')
   ->header_like('Set-Cookie' => qr/bar=baz/)
@@ -301,6 +316,19 @@ $t->ua->request_timeout(0);
 $tx = $t->ua->inactivity_timeout(0.5)->get('/too_long');
 is $tx->error->{message}, 'Inactivity timeout', 'right error';
 $t->ua->inactivity_timeout(20);
+
+# Transaction is available after rendering early in steps
+$t->get_ok('/steps')->status_is(200)->content_is('second');
+Mojo::IOLoop->one_tick until $steps;
+is $steps, 'third', 'right result';
+
+# Event loop is automatically started for steps
+my $c = app->build_controller;
+$c->steps;
+is $c->res->body, 'second', 'right content';
+
+# Exception in step
+$t->get_ok('/steps?die=1')->status_is(500)->content_like(qr/intentional/);
 
 done_testing();
 

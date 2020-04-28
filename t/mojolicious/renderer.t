@@ -1,13 +1,13 @@
 use Mojo::Base -strict;
 
 use Test::More;
-use Mojo::Util qw(decode gunzip);
+use Mojo::Util 'decode';
 use Mojolicious;
 
 # Partial rendering
 my $app = Mojolicious->new(secrets => ['works']);
-my $c   = $app->build_controller;
-$c->app->log->level('debug')->unsubscribe('message');
+my $c = $app->build_controller;
+$c->app->log->level('fatal');
 is $c->render_to_string(text => 'works'), 'works', 'renderer is working';
 
 # Normal rendering with default format
@@ -37,6 +37,7 @@ $c->stash->{layout}   = 'something';
 $c->stash->{handler}  = 'debug';
 is_deeply [$renderer->render($c)], ['Hello Mojo!Hello Mojo!', 'test'],
   'normal rendering with layout';
+is delete $c->stash->{layout}, 'something';
 
 # Rendering a path with dots
 $c->stash->{template} = 'some.path.with.dots/template';
@@ -46,10 +47,10 @@ is_deeply [$renderer->render($c)], ['Hello Mojo!', 'test'],
 
 # Unrecognized handler
 my $log = '';
-my $cb  = $c->app->log->on(message => sub { $log .= pop });
+my $cb = $c->app->log->on(message => sub { $log .= pop });
 $c->stash->{handler} = 'not_defined';
 is $renderer->render($c), undef, 'return undef for unrecognized handler';
-like $log, qr/No handler for "not_defined" found/, 'right message';
+like $log, qr/No handler for "not_defined" available/, 'right message';
 $c->app->log->unsubscribe(message => $cb);
 
 # Default template name
@@ -58,9 +59,9 @@ is $c->app->renderer->template_for($c), 'foo/bar', 'right template name';
 
 # Big cookie
 $log = '';
-$cb  = $c->app->log->on(message => sub { $log .= pop });
+$cb = $c->app->log->on(message => sub { $log .= pop });
 $c->cookie(foo => 'x' x 4097);
-like $log, qr/Cookie "foo" is bigger than 4KiB/, 'right message';
+like $log, qr/Cookie "foo" is bigger than 4096 bytes/, 'right message';
 $c->app->log->unsubscribe(message => $cb);
 
 # Nested helpers
@@ -80,7 +81,7 @@ $first->myapp->defaults(foo => 'bar');
 is $first->myapp->defaults('foo'), 'bar', 'right result';
 is $first->helpers->myapp->defaults('foo'), 'bar', 'right result';
 is $first->app->myapp->defaults('foo'),     'bar', 'right result';
-my $app2   = Mojolicious->new(secrets => ['works']);
+my $app2 = Mojolicious->new(secrets => ['works']);
 my $second = $app2->build_controller;
 $second->app->log->level('fatal');
 is $second->app->renderer->get_helper('myapp'),          undef, 'no helper';
@@ -97,62 +98,6 @@ is $first->helpers->myapp->defaults('foo'), 'bar', 'right result';
 my $helpers = $first->helpers;
 is $helpers->myapp->multi_level->test, $helpers->myapp->multi_level->test,
   'same result';
-
-# Compression (disabled)
-my $output = 'a' x 1000;
-$c = $app->build_controller;
-$c->req->headers->accept_encoding('gzip');
-$renderer->respond($c, $output, 'html');
-is $c->res->headers->content_type, 'text/html;charset=UTF-8',
-  'right "Content-Type" value';
-ok !$c->res->headers->vary,             'no "Vary" value';
-ok !$c->res->headers->content_encoding, 'no "Content-Encoding" value';
-is $c->res->body, $output, 'same string';
-
-# Compression (enabled)
-$renderer->compress(1);
-$c = $app->build_controller;
-$c->req->headers->accept_encoding('gzip');
-$renderer->respond($c, $output, 'html');
-is $c->res->headers->content_type, 'text/html;charset=UTF-8',
-  'right "Content-Type" value';
-is $c->res->headers->vary, 'Accept-Encoding', 'right "Vary" value';
-is $c->res->headers->content_encoding, 'gzip', 'right "Content-Encoding" value';
-isnt $c->res->body, $output, 'different string';
-is gunzip($c->res->body), $output, 'same string';
-
-# Compression (not requested)
-$c = $app->build_controller;
-$renderer->respond($c, $output, 'html');
-is $c->res->code, 200, 'right status';
-is $c->res->headers->content_type, 'text/html;charset=UTF-8',
-  'right "Content-Type" value';
-is $c->res->headers->vary, 'Accept-Encoding', 'right "Vary" value';
-ok !$c->res->headers->content_encoding, 'no "Content-Encoding" value';
-is $c->res->body, $output, 'same string';
-
-# Compression (other transfer encoding)
-$c = $app->build_controller;
-$c->res->headers->content_encoding('whatever');
-$renderer->respond($c, $output, 'html', 500);
-is $c->res->code, 500, 'right status';
-is $c->res->headers->content_type, 'text/html;charset=UTF-8',
-  'right "Content-Type" value';
-is $c->res->headers->vary, 'Accept-Encoding', 'right "Vary" value';
-is $c->res->headers->content_encoding, 'whatever',
-  'right "Content-Encoding" value';
-is $c->res->body, $output, 'same string';
-
-# Compression (below minimum length)
-$output = 'a' x 850;
-$c      = $app->build_controller;
-$c->req->headers->accept_encoding('gzip');
-$renderer->respond($c, $output, 'html');
-is $c->res->headers->content_type, 'text/html;charset=UTF-8',
-  'right "Content-Type" value';
-ok !$c->res->headers->vary,             'no "Vary" value';
-ok !$c->res->headers->content_encoding, 'no "Content-Encoding" value';
-is $c->res->body, $output, 'same string';
 
 # Missing method (AUTOLOAD)
 my $class = ref $first->myapp;

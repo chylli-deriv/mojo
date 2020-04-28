@@ -3,37 +3,54 @@ use Mojo::Base -strict;
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
 use Test::More;
-use IO::Socket::IP;
 use Mojo::IOLoop;
 use Mojo::IOLoop::Client;
 use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Server;
 use Mojo::IOLoop::Stream;
 
-# Defaults
+# Custom reactor
+package MyReactor;
+use Mojo::Base 'Mojo::Reactor::Poll';
+
+package main;
+
+# Reactor detection
+$ENV{MOJO_REACTOR} = 'MyReactorDoesNotExist';
 my $loop = Mojo::IOLoop->new;
+is ref $loop->reactor, 'Mojo::Reactor::Poll', 'right class';
+$ENV{MOJO_REACTOR} = 'MyReactor';
+$loop = Mojo::IOLoop->new;
+is ref $loop->reactor, 'MyReactor', 'right class';
+
+# Defaults
+$loop = Mojo::IOLoop->new;
 is $loop->max_connections, 1000, 'right default';
 $loop = Mojo::IOLoop->new(max_connections => 10);
 is $loop->max_connections, 10, 'right value';
 
 # Double start
 my $err;
-Mojo::IOLoop->next_tick(sub {
-  my $loop = shift;
-  eval { $loop->start };
-  $err = $@;
-  $loop->stop;
-});
+Mojo::IOLoop->next_tick(
+  sub {
+    my $loop = shift;
+    eval { $loop->start };
+    $err = $@;
+    $loop->stop;
+  }
+);
 Mojo::IOLoop->start;
 like $err, qr/^Mojo::IOLoop already running/, 'right error';
 
 # Double one_tick
 $err = undef;
-Mojo::IOLoop->next_tick(sub {
-  my $loop = shift;
-  eval { $loop->one_tick };
-  $err = $@;
-});
+Mojo::IOLoop->next_tick(
+  sub {
+    my $loop = shift;
+    eval { $loop->one_tick };
+    $err = $@;
+  }
+);
 Mojo::IOLoop->one_tick;
 like $err, qr/^Mojo::IOLoop already running/, 'right error';
 
@@ -76,8 +93,7 @@ ok($count > 1,  'more than one recurring event');
 ok($count < 10, 'less than ten recurring events');
 
 # Handle and reset
-my ($handle, $handle2, $reset);
-Mojo::IOLoop->singleton->on(reset => sub { $reset++ });
+my ($handle, $handle2);
 $id = Mojo::IOLoop->server(
   (address => '127.0.0.1') => sub {
     my ($loop, $stream) = @_;
@@ -92,10 +108,12 @@ Mojo::IOLoop->start;
 $count = 0;
 Mojo::IOLoop->recurring(10 => sub { $timer++ });
 my $running;
-Mojo::IOLoop->next_tick(sub {
-  Mojo::IOLoop->reset;
-  $running = Mojo::IOLoop->is_running;
-});
+Mojo::IOLoop->next_tick(
+  sub {
+    Mojo::IOLoop->reset;
+    $running = Mojo::IOLoop->is_running;
+  }
+);
 Mojo::IOLoop->start;
 ok !$running, 'not running';
 is $count, 0, 'no recurring events';
@@ -103,7 +121,6 @@ ok !Mojo::IOLoop->acceptor($id), 'acceptor has been removed';
 ok !Mojo::IOLoop->stream($id2),  'stream has been removed';
 is $handle, $handle2, 'handles are equal';
 isa_ok $handle, 'IO::Socket', 'right reference';
-is $reset,      1,            'reset event has been emitted once';
 
 # The poll reactor stops when there are no events being watched anymore
 my $time = time;
@@ -111,12 +128,6 @@ Mojo::IOLoop->start;
 Mojo::IOLoop->one_tick;
 Mojo::IOLoop->reset;
 ok time < ($time + 10), 'stopped automatically';
-
-# Reset events
-Mojo::IOLoop->singleton->on(finish => sub { });
-ok !!Mojo::IOLoop->singleton->has_subscribers('finish'), 'has subscribers';
-Mojo::IOLoop->reset;
-ok !Mojo::IOLoop->singleton->has_subscribers('finish'), 'no subscribers';
 
 # Stream
 my $buffer = '';
@@ -153,7 +164,7 @@ is $stream->timeout, 15, 'right default';
 is $stream->timeout(16)->timeout, 16, 'right timeout';
 $id = Mojo::IOLoop->stream($stream);
 $stream->on(close => sub { Mojo::IOLoop->stop });
-$stream->on(read  => sub { $buffer .= pop });
+$stream->on(read => sub { $buffer .= pop });
 $stream->write('hello');
 ok !!Mojo::IOLoop->stream($id), 'stream exists';
 is $stream->timeout, 16, 'right timeout';
@@ -164,7 +175,7 @@ ok !Mojo::IOLoop->stream($id), 'stream does not exist anymore';
 is $buffer, 'acceptedhelloworld', 'right result';
 
 # Removed listen socket
-$id   = $loop->server({address => '127.0.0.1'} => sub { });
+$id = $loop->server({address => '127.0.0.1'} => sub { });
 $port = $loop->acceptor($id)->port;
 my $connected;
 $loop->client(
@@ -207,7 +218,7 @@ $delay->wait;
 is $removed, 1, 'connection has been removed';
 
 # Stream throttling
-my ($client, $server, $client_after, $server_before, $server_after, @waiting);
+my ($client, $server, $client_after, $server_before, $server_after);
 $id = Mojo::IOLoop->server(
   {address => '127.0.0.1'} => sub {
     my ($loop, $stream) = @_;
@@ -219,12 +230,10 @@ $id = Mojo::IOLoop->server(
             $server_before = $server;
             $stream->stop;
             $stream->write('works!');
-            push @waiting, $stream->bytes_waiting;
             Mojo::IOLoop->timer(
               0.5 => sub {
                 $server_after = $server;
                 $client_after = $client;
-                push @waiting, $stream->bytes_waiting;
                 $stream->start;
                 Mojo::IOLoop->timer(0.5 => sub { Mojo::IOLoop->stop });
               }
@@ -251,24 +260,6 @@ is $server_before, $server_after, 'stream has been paused';
 ok length($server) > length($server_after), 'stream has been resumed';
 is $client, $client_after, 'stream was writable while paused';
 is $client, 'works!', 'full message has been written';
-is_deeply \@waiting, [6, 0], 'right buffer sizes';
-
-# Watermarks
-my $fake = IO::Socket::IP->new(Listen => 5, LocalAddr => '127.0.0.1');
-$stream = Mojo::IOLoop::Stream->new($fake);
-$stream->start;
-$stream->high_water_mark(10);
-$stream->write('abcd');
-is $stream->bytes_waiting, 4, 'four bytes waiting';
-ok $stream->can_write, 'stream is still writable';
-$stream->write('efghijk');
-is $stream->bytes_waiting, 11, 'eleven bytes waiting';
-ok !$stream->can_write, 'stream is not writable anymore';
-$stream->high_water_mark(12);
-ok $stream->can_write, 'stream is writable again';
-$stream->close;
-ok !$stream->can_write, 'closed stream is not writable anymore';
-undef $stream;
 
 # Graceful shutdown
 $err  = '';
@@ -285,7 +276,7 @@ ok !$err, 'no error';
 is $finish, 1, 'finish event has been emitted once';
 
 # Graceful shutdown (without connection)
-$err  = $finish = '';
+$err = $finish = '';
 $loop = Mojo::IOLoop->new;
 $loop->on(finish => sub { $finish++ });
 $loop->next_tick(sub { shift->stop_gracefully });
@@ -311,11 +302,13 @@ $loop = Mojo::IOLoop->new->max_connections(2);
 my @accepting;
 $id = $loop->server(
   {address => '127.0.0.1', single_accept => 1} => sub {
-    shift->next_tick(sub {
-      my $loop = shift;
-      push @accepting, $loop->acceptor($id)->is_accepting;
-      $loop->stop if @accepting == 2;
-    });
+    shift->next_tick(
+      sub {
+        my $loop = shift;
+        push @accepting, $loop->acceptor($id)->is_accepting;
+        $loop->stop if @accepting == 2;
+      }
+    );
   }
 );
 $port = $loop->acceptor($id)->port;
@@ -333,7 +326,7 @@ ok !$accepting[1], 'connection limit reached';
   my $loop = Mojo::IOLoop->new;
   $loop->timer(0 => sub { die 'Bye!' });
   $loop->start;
-  like $err, qr/^Mojo::Reactor::Poll:.*Bye!/, 'right error';
+  like $err, qr/^MyReactor:.*Bye!/, 'right error';
 }
 
 # Defaults

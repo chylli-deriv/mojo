@@ -1,7 +1,7 @@
 package Mojo::Reactor::EV;
 use Mojo::Base 'Mojo::Reactor::Poll';
 
-use Carp qw(croak);
+use Carp 'croak';
 use EV 4.0;
 
 my $EV;
@@ -13,22 +13,16 @@ sub again {
   $timer->{watcher}->again;
 }
 
+sub is_running { !!EV::depth }
+
 # We have to fall back to Mojo::Reactor::Poll, since EV is unique
 sub new { $EV++ ? Mojo::Reactor::Poll->new : shift->SUPER::new }
 
-sub one_tick {
-  my $self = shift;
-  local $self->{running} = 1 unless $self->{running};
-  EV::run(EV::RUN_ONCE);
-}
+sub one_tick { EV::run(EV::RUN_ONCE) }
 
 sub recurring { shift->_timer(1, @_) }
 
-sub start {
-  my $self = shift;
-  local $self->{running} = 1 unless $self->{running};
-  EV::run;
-}
+sub start {EV::run}
 
 sub stop { EV::break(EV::BREAK_ALL) }
 
@@ -44,7 +38,7 @@ sub watch {
   $mode |= EV::READ  if $read;
   $mode |= EV::WRITE if $write;
 
-  if    ($mode == 0)             { delete $io->{watcher} }
+  if ($mode == 0) { delete $io->{watcher} }
   elsif (my $w = $io->{watcher}) { $w->events($mode) }
   else {
     my $cb = sub {
@@ -134,6 +128,12 @@ implements the following new ones.
 
 Restart timer. Note that this method requires an active timer.
 
+=head2 is_running
+
+  my $bool = $reactor->is_running;
+
+Check if reactor is running.
+
 =head2 new
 
   my $reactor = Mojo::Reactor::EV->new;
@@ -202,6 +202,6 @@ this method requires an active I/O watcher.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

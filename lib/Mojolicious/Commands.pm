@@ -9,9 +9,8 @@ has hint => <<EOF;
 
 See 'APPLICATION help COMMAND' for more information on a specific command.
 EOF
-has message => sub { shift->extract_usage . "\nCommands:\n" };
-has namespaces =>
-  sub { ['Mojolicious::Command::Author', 'Mojolicious::Command'] };
+has message    => sub { shift->extract_usage . "\nCommands:\n" };
+has namespaces => sub { ['Mojolicious::Command'] };
 
 sub detect {
 
@@ -39,7 +38,7 @@ sub run {
 
     # Help
     $name = shift @args if my $help = $name eq 'help';
-    local $ENV{MOJO_HELP} = $help = $ENV{MOJO_HELP} || $help;
+    $help = $ENV{MOJO_HELP} ||= $help;
 
     # Remove options shared by all commands before loading the command
     _args(\@args);
@@ -51,11 +50,8 @@ sub run {
       unless $module;
 
     # Run command
-    my $app     = $self->app;
-    my $command = $module->new(app => $app);
-    return $command->help(@args) if $help;
-    $app->plugins->emit_hook(before_command => $command, \@args);
-    return $command->run(@args);
+    my $command = $module->new(app => $self->app);
+    return $help ? $command->help(@args) : $command->run(@args);
   }
 
   # Hide list for tests
@@ -125,7 +121,7 @@ Mojolicious::Commands - Command line interface
 
 L<Mojolicious::Commands> is the interactive command line interface for the
 L<Mojolicious> framework. It will automatically detect available commands in
-the C<Mojolicious::Command> and C<Mojolicious::Command::Author> namespaces.
+the C<Mojolicious::Command> namespace.
 
 =head1 COMMANDS
 
@@ -142,7 +138,7 @@ auto detected.
 
   $ mojo cpanify -u sri -p secr3t Mojolicious-Plugin-Fun-0.1.tar.gz
 
-Use L<Mojolicious::Command::Author::cpanify> for uploading files to CPAN.
+Use L<Mojolicious::Command::cpanify> for uploading files to CPAN.
 
 =head2 daemon
 
@@ -174,34 +170,34 @@ List available options for generator command with short descriptions.
 
   $ mojo generate app <AppName>
 
-Use L<Mojolicious::Command::Author::generate::app> to generate application
-directory structure for a fully functional L<Mojolicious> application.
+Use L<Mojolicious::Command::generate::app> to generate application directory
+structure for a fully functional L<Mojolicious> application.
 
 =head2 generate lite_app
 
   $ mojo generate lite_app
 
-Use L<Mojolicious::Command::Author::generate::lite_app> to generate a fully
-functional L<Mojolicious::Lite> application.
+Use L<Mojolicious::Command::generate::lite_app> to generate a fully functional
+L<Mojolicious::Lite> application.
 
 =head2 generate makefile
 
   $ mojo generate makefile
   $ ./myapp.pl generate makefile
 
-Use L<Mojolicious::Command::Author::generate::makefile> to generate
-C<Makefile.PL> file for application.
+Use L<Mojolicious::Command::generate::makefile> to generate C<Makefile.PL> file
+for application.
 
 =head2 generate plugin
 
   $ mojo generate plugin <PluginName>
 
-Use L<Mojolicious::Command::Author::generate::plugin> to generate directory
-structure for a fully functional L<Mojolicious> plugin.
+Use L<Mojolicious::Command::generate::plugin> to generate directory structure
+for a fully functional L<Mojolicious> plugin.
 
 =head2 get
 
-  $ mojo get https://mojolicious.org
+  $ mojo get http://mojolicious.org
   $ ./myapp.pl get /foo
 
 Use L<Mojolicious::Command::get> to perform requests to remote host or local
@@ -224,7 +220,7 @@ List available options for the command with short descriptions.
 
   $ ./myapp.pl inflate
 
-Use L<Mojolicious::Command::Author::inflate> to turn templates and static files
+Use L<Mojolicious::Command::inflate> to turn templates and static files
 embedded in the C<DATA> sections of your application into real files.
 
 =head2 prefork
@@ -246,6 +242,14 @@ usually auto detected.
   $ ./myapp.pl routes
 
 Use L<Mojolicious::Command::routes> to list application routes.
+
+=head2 test
+
+  $ ./myapp.pl test
+  $ ./myapp.pl test t/fun.t
+
+Use L<Mojolicious::Command::test> to run application tests from the C<t>
+directory.
 
 =head2 version
 
@@ -279,8 +283,7 @@ Short usage message shown before listing available commands.
   my $namespaces = $commands->namespaces;
   $commands      = $commands->namespaces(['MyApp::Command']);
 
-Namespaces to load commands from, defaults to C<Mojolicious::Command::Author>
-and C<Mojolicious::Command>.
+Namespaces to load commands from, defaults to C<Mojolicious::Command>.
 
   # Add another namespace to load commands from
   push @{$commands->namespaces}, 'MyApp::Command';
@@ -318,6 +321,6 @@ shared by all commands, will be parsed from C<@ARGV> during compile time.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

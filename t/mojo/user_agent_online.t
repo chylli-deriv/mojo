@@ -9,11 +9,9 @@ use Test::More;
 use Mojo::IOLoop::TLS;
 
 plan skip_all => 'set TEST_ONLINE to enable this test (developer only!)'
-  unless $ENV{TEST_ONLINE} || $ENV{TEST_ALL};
-plan skip_all => 'IO::Socket::SSL 2.009+ required for this test!'
+  unless $ENV{TEST_ONLINE};
+plan skip_all => 'IO::Socket::SSL 1.94+ required for this test!'
   unless Mojo::IOLoop::TLS->can_tls;
-plan skip_all => 'Mozilla::CA required for this test!'
-  unless eval { require Mozilla::CA; 1 };
 
 use IO::Socket::INET;
 use Mojo::IOLoop;
@@ -149,15 +147,20 @@ is h('mojolicious.org')->code,          200, 'right status';
 is h('mojolicious.org')->body,          '',  'no content';
 is p('mojolicious.org/lalalala')->code, 404, 'right status';
 is g('http://mojolicious.org')->code,   200, 'right status';
+is p('http://mojolicious.org')->code,   404, 'right status';
 my $res = p('https://metacpan.org/search' => form => {q => 'mojolicious'});
 like $res->body, qr/Mojolicious/, 'right content';
 is $res->code,   200,             'right status';
 
-# Simple request
+# Simple requests
 $tx = $ua->get('metacpan.org');
 is $tx->req->method, 'GET',                 'right method';
 is $tx->req->url,    'http://metacpan.org', 'right url';
 is $tx->res->code,   301,                   'right status';
+$tx = $ua->get('http://google.com');
+is $tx->req->method, 'GET',               'right method';
+is $tx->req->url,    'http://google.com', 'right url';
+is $tx->res->code,   302,                 'right status';
 
 # Simple keep-alive requests
 $tx = $ua->get('https://www.wikipedia.org');
@@ -191,16 +194,16 @@ $ua = Mojo::UserAgent->new;
 
 # Simple keep-alive form POST
 $tx = $ua->post('https://metacpan.org/search' => form => {q => 'mojolicious'});
-is $tx->req->method, 'POST',                        'right method';
-is $tx->req->url,    'https://metacpan.org/search', 'right url';
+is $tx->req->method, 'POST', 'right method';
+is $tx->req->url, 'https://metacpan.org/search', 'right url';
 is $tx->req->headers->content_length, 13, 'right content length';
 is $tx->req->body,   'q=mojolicious', 'right content';
 like $tx->res->body, qr/Mojolicious/, 'right content';
 is $tx->res->code,   200,             'right status';
 ok $tx->keep_alive, 'connection will be kept alive';
 $tx = $ua->post('https://metacpan.org/search' => form => {q => 'mojolicious'});
-is $tx->req->method, 'POST',                        'right method';
-is $tx->req->url,    'https://metacpan.org/search', 'right url';
+is $tx->req->method, 'POST', 'right method';
+is $tx->req->url, 'https://metacpan.org/search', 'right url';
 is $tx->req->headers->content_length, 13, 'right content length';
 is $tx->req->body,   'q=mojolicious', 'right content';
 like $tx->res->body, qr/Mojolicious/, 'right content';
@@ -232,5 +235,10 @@ $tx = $ua->connect_timeout(0.5)->get('192.0.2.1');
 ok $tx->is_finished, 'transaction is finished';
 is $tx->error->{message}, 'Connect timeout', 'right error';
 $ua->connect_timeout(3);
+
+# Request timeout (non-routable address)
+$tx = $ua->request_timeout(0.5)->get('192.0.2.1');
+ok $tx->is_finished, 'transaction is finished';
+is $tx->error->{message}, 'Request timeout', 'right error';
 
 done_testing();

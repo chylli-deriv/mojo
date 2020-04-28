@@ -7,14 +7,9 @@ Mojolicious::Guides - The Mojolicious Guide to the Galaxy
 
 =head1 DON'T PANIC!
 
-The L<Mojolicious|https://mojolicious.org> documentation is structured into
-three parts. The L</"TUTORIAL"> everyone starts with, the L</"GUIDES"> that
-explain all major features in detail, and the class L</"REFERENCE"> listing
-all available APIs.
-
-Some parts of the documentation only use the L<Mojolicious::Lite> micro web
-framework for examples, but that's merely a convenience for the reader. Almost
-all features are exactly the same for full L<Mojolicious> applications.
+We are constantly working on new documentation. Follow us on
+L<GitHub|http://github.com/kraih/mojo> or join the official IRC channel C<#mojo>
+on C<irc.perl.org> to get all the latest updates.
 
 =head1 BASICS
 
@@ -59,14 +54,6 @@ L<features|feature> are enabled, even if examples don't specifically mention it.
 Some modules, like L<Mojo::Base> and L<Mojolicious::Lite>, will enable them for
 you automatically, whenever they are used.
 
-=item Variable names
-
-For brevity and clarity, example variables will reflect the type of data the API
-uses. For instance, C<$bytes> or C<$chars> to distinguish whether it is encoded
-bytes or decoded characters in a Perl L<string|perlunifaq>, C<$bool> if the
-value just indicates true or false, C<$c> to denote a L<Mojolicious::Controller>
-object, or C<$app> to denote the L<application|Mojolicious> object.
-
 =back
 
 =head1 TUTORIAL
@@ -100,11 +87,6 @@ Simple and fun introduction to the L<Mojolicious> router.
 =item L<Mojolicious::Guides::Rendering>
 
 Generating content with the L<Mojolicious> renderer.
-
-=item L<Mojolicious::Guides::Testing>
-
-Powerful yet elegant testing techniques and tools for L<Mojolicious> and other
-web applications.
 
 =item L<Mojolicious::Guides::Cookbook>
 
@@ -185,18 +167,14 @@ designed to be used with it and are being developed under the same umbrella.
 
 A tiny wrapper around L<DBD::Pg> that makes
 L<PostgreSQL|http://www.postgresql.org> a lot of fun to use with
-L<Mojolicious>. Perform queries blocking and non-blocking, use all
-L<SQL features|https://www.postgresql.org/docs/current/static/sql.html>
-PostgreSQL has to offer, generate CRUD queries from data structures, manage your
-database schema with migrations and build scalable real-time web applications
-with the publish/subscribe pattern.
-
-B<Examples:> The minimal
-L<chat|https://github.com/mojolicious/mojo-pg/tree/master/examples/chat.pl>
+L<Mojolicious>. And it comes with two great
+L<example applications|https://github.com/kraih/mojo-pg/tree/master/examples/>
+you can use for inspiration. The minimal
+L<chat|https://github.com/kraih/mojo-pg/tree/master/examples/chat.pl>
 application will show you how to scale WebSockets to multiple servers, and the
 well-structured
-L<blog|https://github.com/mojolicious/mojo-pg/tree/master/examples/blog> 
-application how to apply the MVC design pattern in practice.
+L<blog|https://github.com/kraih/mojo-pg/tree/master/examples/blog> application
+how to apply the MVC design pattern in practice.
 
 =item L<Minion>
 
@@ -207,12 +185,6 @@ outside of the request/response lifecycle. Among those tasks you'll commonly
 find image resizing, spam filtering, HTTP downloads, building tarballs, warming
 caches and basically everything else you can imagine that's not super fast.
 
-B<Examples:> The
-L<link
-checker|https://github.com/mojolicious/minion/tree/master/examples/linkcheck>
-will show you how to integrate background jobs into well-structured
-L<Mojolicious> applications.
-
 =back
 
 =head1 REFERENCE
@@ -221,9 +193,11 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =over 2
 
-=item * L<Mojo>
-
 =item * L<Mojo::Base>
+
+=over 2
+
+=item * L<Mojo>
 
 =over 2
 
@@ -231,9 +205,15 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =over 2
 
+=item * L<Mojolicious::Lite>
+
+=over 2
+
 =item * L<Mojo::HelloWorld>
 
-=item * L<Mojolicious::Lite>
+=back
+
+=back
 
 =back
 
@@ -283,11 +263,11 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =item * L<Mojo::IOLoop::Client>
 
+=item * L<Mojo::IOLoop::Delay>
+
 =item * L<Mojo::IOLoop::Server>
 
 =item * L<Mojo::IOLoop::Stream>
-
-=item * L<Mojo::IOLoop::Subprocess>
 
 =item * L<Mojo::IOLoop::TLS>
 
@@ -355,31 +335,17 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =item * L<Mojo::Headers>
 
+=item * L<Mojo::IOLoop::Subprocess>
+
 =item * L<Mojo::JSON::Pointer>
 
 =item * L<Mojo::Parameters>
 
 =item * L<Mojo::Path>
 
-=item * L<Mojo::Promise>
-
-=over 2
-
-=item * L<Mojo::IOLoop::Delay>
-
-=back
-
 =item * L<Mojo::Server::Hypnotoad>
 
 =item * L<Mojo::Server::Morbo>
-
-=item * L<Mojo::Server::Morbo::Backend>
-
-=over 2
-
-=item * L<Mojo::Server::Morbo::Backend::Poll>
-
-=back
 
 =item * L<Mojo::Template>
 
@@ -401,11 +367,23 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =item * L<Mojolicious::Command::cgi>
 
+=item * L<Mojolicious::Command::cpanify>
+
 =item * L<Mojolicious::Command::daemon>
 
 =item * L<Mojolicious::Command::eval>
 
+=item * L<Mojolicious::Command::generate::app>
+
+=item * L<Mojolicious::Command::generate::lite_app>
+
+=item * L<Mojolicious::Command::generate::makefile>
+
+=item * L<Mojolicious::Command::generate::plugin>
+
 =item * L<Mojolicious::Command::get>
+
+=item * L<Mojolicious::Command::inflate>
 
 =item * L<Mojolicious::Command::prefork>
 
@@ -413,25 +391,15 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =item * L<Mojolicious::Command::routes>
 
+=item * L<Mojolicious::Command::test>
+
 =item * L<Mojolicious::Command::version>
-
-=item * L<Mojolicious::Command::Author::cpanify>
-
-=item * L<Mojolicious::Command::Author::generate::app>
-
-=item * L<Mojolicious::Command::Author::generate::lite_app>
-
-=item * L<Mojolicious::Command::Author::generate::makefile>
-
-=item * L<Mojolicious::Command::Author::generate::plugin>
-
-=item * L<Mojolicious::Command::Author::inflate>
 
 =item * L<Mojolicious::Commands>
 
 =over 2
 
-=item * L<Mojolicious::Command::Author::generate>
+=item * L<Mojolicious::Command::generate>
 
 =back
 
@@ -464,6 +432,8 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 =item * L<Mojolicious::Plugin::HeaderCondition>
 
 =item * L<Mojolicious::Plugin::Mount>
+
+=item * L<Mojolicious::Plugin::PODRenderer>
 
 =item * L<Mojolicious::Plugin::TagHelpers>
 
@@ -501,8 +471,6 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 
 =item * L<Mojo::Collection>
 
-=item * L<Mojo::DynamicMethods>
-
 =item * L<Mojo::DOM>
 
 =item * L<Mojo::File>
@@ -528,14 +496,14 @@ This is the class hierarchy of the L<Mojolicious> distribution.
 =head1 MORE
 
 A lot more documentation and examples by many different authors can be found in
-the L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>.
+the L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

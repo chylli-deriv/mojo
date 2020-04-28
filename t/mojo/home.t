@@ -3,7 +3,8 @@ use Mojo::Base -strict;
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
 use Test::More;
-use Mojo::File qw(curfile path);
+use FindBin;
+use Mojo::File 'path';
 use Mojo::HelloWorld;
 use Mojo::Home;
 
@@ -59,8 +60,8 @@ my $home = Mojo::Home->new->detect;
 is_deeply $home->to_array, path->to_abs->to_array, 'right path detected';
 
 # Path generation
-$home = Mojo::Home->new(curfile->dirname);
-my $path = curfile->dirname;
+$home = Mojo::Home->new($FindBin::Bin);
+my $path = path($FindBin::Bin);
 is $home->rel_file('foo.txt'), $path->child('foo.txt'), 'right path';
 is $home->rel_file('foo/bar.txt'), $path->child('foo', 'bar.txt'), 'right path';
 is $home->rel_file('foo/bar.txt')->basename, 'bar.txt', 'right result';

@@ -1,11 +1,11 @@
-package Mojolicious::Command::Author::inflate;
+package Mojolicious::Command::inflate;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Loader qw(data_section file_is_binary);
-use Mojo::Util qw(encode);
+use Mojo::Util 'encode';
 
 has description => 'Inflate embedded files to real files';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
   my $self = shift;
@@ -34,7 +34,7 @@ sub run {
 
 =head1 NAME
 
-Mojolicious::Command::Author::inflate - Inflate command
+Mojolicious::Command::inflate - Inflate command
 
 =head1 SYNOPSIS
 
@@ -51,8 +51,8 @@ Mojolicious::Command::Author::inflate - Inflate command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::inflate> turns templates and static files
-embedded in the C<DATA> sections of your application into real files.
+L<Mojolicious::Command::inflate> turns templates and static files embedded in
+the C<DATA> sections of your application into real files.
 
 This is a core command, that means it is always enabled and its code a good
 example for learning to build new commands, you're welcome to fork it.
@@ -62,7 +62,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::inflate> inherits all attributes from
+L<Mojolicious::Command::inflate> inherits all attributes from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 description
@@ -70,18 +70,18 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $inflate->description;
   $inflate        = $inflate->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $inflate->usage;
   $inflate  = $inflate->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::inflate> inherits all methods from
+L<Mojolicious::Command::inflate> inherits all methods from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
@@ -92,6 +92,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -1,10 +1,10 @@
 package Mojo::Template;
 use Mojo::Base -base;
 
-use Carp qw(croak);
+use Carp 'croak';
 use Mojo::ByteStream;
 use Mojo::Exception;
-use Mojo::File qw(path);
+use Mojo::File 'path';
 use Mojo::Util qw(decode encode monkey_patch);
 
 use constant DEBUG => $ENV{MOJO_TEMPLATE_DEBUG} || 0;
@@ -17,12 +17,12 @@ has comment_mark  => '#';
 has encoding      => 'UTF-8';
 has escape        => sub { \&Mojo::Util::xml_escape };
 has [qw(escape_mark expression_mark trim_mark)] => '=';
-has [qw(line_start replace_mark)]               => '%';
-has name                                        => 'template';
-has namespace                                   => 'Mojo::Template::SandBox';
-has tag_start                                   => '<%';
-has tag_end                                     => '%>';
-has tree                                        => sub { [] };
+has [qw(line_start replace_mark)] => '%';
+has name      => 'template';
+has namespace => 'Mojo::Template::SandBox';
+has tag_start => '<%';
+has tag_end   => '%>';
+has tree      => sub { [] };
 
 sub parse {
   my ($self, $template) = @_;
@@ -193,7 +193,7 @@ sub _compile {
     # Text (quote and fix line ending)
     if ($op eq 'text') {
       $value = join "\n", map { quotemeta $_ } split("\n", $value, -1);
-      $value      .= '\n'                          if $newline;
+      $value .= '\n' if $newline;
       $blocks[-1] .= "\$_O .= \"" . $value . "\";" if length $value;
     }
 
@@ -267,7 +267,7 @@ sub _wrap {
   }
 
   # Wrap lines
-  my $num  = () = $body =~ /\n/g;
+  my $num = () = $body =~ /\n/g;
   my $code = $self->_line(1) . "\npackage @{[$self->namespace]};";
   $code .= "use Mojo::Base -strict; no warnings 'ambiguous';";
   $code .= "sub { my \$_O = ''; @{[$self->prepend]};{ $args { $body\n";
@@ -352,7 +352,7 @@ the default in L<Mojolicious> C<.ep> templates, for example.
 
 L<Mojo::ByteStream> objects are always excluded from automatic escaping.
 
-  % use Mojo::ByteStream qw(b);
+  % use Mojo::ByteStream 'b';
   <%= b('<div>excluded!</div>') %>
 
 Whitespace characters around tags can be trimmed by adding an additional equal
@@ -413,16 +413,11 @@ L<Mojo::Template> will return L<Mojo::Exception> objects that stringify to
 error messages with context.
 
   Bareword "xx" not allowed while "strict subs" in use at template line 4.
-  Context:
-    2: </head>
-    3: <body>
-    4: % my $i = 2; xx
-    5: %= $i * 2
-    6: </body>
-  Traceback (most recent call first):
-    File "template", line 4, in "Mojo::Template::Sandbox"
-    File "path/to/Mojo/Template.pm", line 123, in "Mojo::Template"
-    File "path/to/myapp.pl", line 123, in "main"
+  2: </head>
+  3: <body>
+  4: % my $i = 2; xx
+  5: %= $i * 2
+  6: </body>
 
 =head1 ATTRIBUTES
 
@@ -690,6 +685,6 @@ advanced diagnostics information printed to C<STDERR>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -16,12 +16,12 @@ is $headers->connection, undef, 'no value';
 $headers->content_type('text/text')->content_type('text/html');
 $headers->expect('continue-100');
 $headers->connection('close');
-is $headers->content_type, 'text/html',                'right value';
-like $headers->to_string,  qr/.*\x0d\x0a.*\x0d\x0a.*/, 'right format';
+is $headers->content_type, 'text/html', 'right value';
+like $headers->to_string, qr/.*\x0d\x0a.*\x0d\x0a.*/, 'right format';
 my $hash = $headers->to_hash;
-is $hash->{Connection},     'close',        'right value';
-is $hash->{Expect},         'continue-100', 'right value';
-is $hash->{'Content-Type'}, 'text/html',    'right value';
+is $hash->{Connection}, 'close',        'right value';
+is $hash->{Expect},     'continue-100', 'right value';
+is $hash->{'Content-Type'}, 'text/html', 'right value';
 $hash = $headers->to_hash(1);
 is_deeply $hash->{Connection},     ['close'],        'right structure';
 is_deeply $hash->{Expect},         ['continue-100'], 'right structure';
@@ -30,8 +30,8 @@ is_deeply [sort @{$headers->names}], [qw(Connection Content-Type Expect)],
   'right structure';
 $headers->expires('Thu, 01 Dec 1994 16:00:00 GMT');
 $headers->cache_control('public');
-is $headers->expires,       'Thu, 01 Dec 1994 16:00:00 GMT', 'right value';
-is $headers->cache_control, 'public',                        'right value';
+is $headers->expires, 'Thu, 01 Dec 1994 16:00:00 GMT', 'right value';
+is $headers->cache_control, 'public', 'right value';
 $headers->etag('abc321');
 is $headers->etag, 'abc321', 'right value';
 is $headers->header('ETag'), $headers->etag, 'values are equal';
@@ -94,10 +94,9 @@ is $headers->sec_websocket_protocol('foo')->sec_websocket_protocol, 'foo',
   'right value';
 is $headers->sec_websocket_version('foo')->sec_websocket_version, 'foo',
   'right value';
-is $headers->server('foo')->server,               'foo', 'right value';
-is $headers->server_timing('foo')->server_timing, 'foo', 'right value';
-is $headers->set_cookie('foo')->set_cookie,       'foo', 'right value';
-is $headers->status('foo')->status,               'foo', 'right value';
+is $headers->server('foo')->server,         'foo', 'right value';
+is $headers->set_cookie('foo')->set_cookie, 'foo', 'right value';
+is $headers->status('foo')->status,         'foo', 'right value';
 is $headers->strict_transport_security('foo')->strict_transport_security,
   'foo', 'right value';
 is $headers->te('foo')->te,                               'foo', 'right value';
@@ -126,11 +125,6 @@ is $headers->expect, '100-continue', 'right value';
 is $clone->expect,   'nothing',      'right value';
 $clone = Mojo::Headers->new->add(Foo => [qw(bar baz)])->clone;
 is_deeply $clone->to_hash(1)->{Foo}, [[qw(bar baz)]], 'right structure';
-$clone = $headers->clone;
-$headers->add(Expect => 'whatever');
-is_deeply $clone->to_hash(1), {Expect => ['100-continue']}, 'right structure';
-is_deeply $headers->to_hash(1), {Expect => ['100-continue', 'whatever']},
-  'right structure';
 
 # Parse headers
 $headers = Mojo::Headers->new;
@@ -213,9 +207,9 @@ $headers = Mojo::Headers->new;
 $headers->from_hash(
   {'X-Test' => [23, 24], 'X-Test2' => 'foo', Connection => ['a', 'b']});
 $hash = $headers->to_hash;
-is $hash->{'X-Test'},   '23, 24', 'right value';
-is $hash->{'X-Test2'},  'foo',    'right value';
-is $hash->{Connection}, 'a, b',   'right value';
+is $hash->{'X-Test'},  '23, 24', 'right value';
+is $hash->{'X-Test2'}, 'foo',    'right value';
+is $hash->{Connection}, 'a, b', 'right value';
 $hash = $headers->to_hash(1);
 is_deeply $hash->{'X-Test'}, [23, 24], 'right structure';
 is_deeply $hash->{'X-Test2'}, ['foo'], 'right structure';
@@ -247,33 +241,5 @@ EOF
 ok $headers->is_finished, 'parser is finished';
 is $headers->content_type, 'text/plain', 'right value';
 is $headers->header('X-Bender'), 'Bite my shiny, metal ass!', 'right value';
-
-# Dehop
-$headers = Mojo::Headers->new;
-my $fail = {
-  Connection            => 'fail',
-  'Keep-Alive'          => 'fail',
-  'Proxy-Authenticate'  => 'fail',
-  'Proxy-Authorization' => 'fail',
-  Server                => 'pass',
-  TE                    => 'fail',
-  Trailer               => 'fail',
-  'Transfer-Encoding'   => 'fail',
-  Upgrade               => 'fail'
-};
-$headers->from_hash($fail);
-is_deeply $headers->to_hash, $fail, 'right structure';
-is_deeply $headers->dehop->to_hash, {Server => 'pass'}, 'right structure';
-
-# Invalid characters
-$headers = Mojo::Headers->new;
-eval { $headers->add(Foo => "test\x0a") };
-like $@, qr/Invalid characters in Foo header/, 'right error';
-eval { $headers->header(Foo => "test\x0d") };
-like $@, qr/Invalid characters in Foo header/, 'right error';
-eval { $headers->append(Foo => "\x0atest") };
-like $@, qr/Invalid characters in Foo header/, 'right error';
-eval { $headers->header(Bar => "\x0a\x0dtest") };
-like $@, qr/Invalid characters in Bar header/, 'right error';
 
 done_testing();

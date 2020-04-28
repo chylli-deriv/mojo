@@ -1,18 +1,16 @@
 package Mojo::Reactor;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp qw(croak);
+use Carp 'croak';
 use Config;
-use Mojo::Loader qw(load_class);
-
-my %DETECTED;
+use Mojo::Loader 'load_class';
 
 sub again { croak 'Method "again" not implemented by subclass' }
 
 sub detect {
   my $default = 'Mojo::Reactor::' . ($Config{d_pseudofork} ? 'Poll' : 'EV');
-  my $try     = $ENV{MOJO_REACTOR} || $default;
-  return $DETECTED{$try} ||= load_class($try) ? 'Mojo::Reactor::Poll' : $try;
+  my $try = $ENV{MOJO_REACTOR} || $default;
+  return load_class($try) ? 'Mojo::Reactor::Poll' : $try;
 }
 
 sub io         { croak 'Method "io" not implemented by subclass' }
@@ -206,6 +204,6 @@ overloaded in a subclass. Note that this method requires an active I/O watcher.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -1,10 +1,8 @@
-#
-# Minimal "Hello World" application with template for profiling
-#
 use Mojolicious::Lite;
 
 get '/hello';
 
+# Minimal "Hello World" application with template for profiling
 app->start;
 __DATA__
 

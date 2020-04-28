@@ -1,30 +1,28 @@
-package Mojolicious::Command::Author::generate::plugin;
+package Mojolicious::Command::generate::plugin;
 use Mojo::Base 'Mojolicious::Command';
 
-use Mojo::Util qw(camelize class_to_path getopt);
+use Mojo::Util qw(camelize class_to_path);
+use Mojolicious;
 
 has description => 'Generate Mojolicious plugin directory structure';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
-  my ($self, @args) = @_;
-
-  getopt \@args, 'f|full' => \(my $full);
+  my ($self, $name) = @_;
+  $name ||= 'MyPlugin';
 
   # Class
-  my $name  = $args[0] // 'MyPlugin';
-  my $class = $full ? $name : "Mojolicious::Plugin::$name";
-  my $dir   = join '-', split('::', $class);
-  my $app   = class_to_path $class;
-  $self->render_to_rel_file('class', "$dir/lib/$app",
-    {class => $class, name => $name});
+  my $class = $name =~ /^[a-z]/ ? camelize $name : $name;
+  $class = "Mojolicious::Plugin::$class";
+  my $app = class_to_path $class;
+  my $dir = join '-', split('::', $class);
+  $self->render_to_rel_file('class', "$dir/lib/$app", $class, $name);
 
   # Test
-  $self->render_to_rel_file('test', "$dir/t/basic.t", {name => $name});
+  $self->render_to_rel_file('test', "$dir/t/basic.t", $name);
 
   # Makefile
-  $self->render_to_rel_file('makefile', "$dir/Makefile.PL",
-    {class => $class, path => $app});
+  $self->render_to_rel_file('makefile', "$dir/Makefile.PL", $class, $app);
 }
 
 1;
@@ -33,7 +31,7 @@ sub run {
 
 =head1 NAME
 
-Mojolicious::Command::Author::generate::plugin - Plugin generator command
+Mojolicious::Command::generate::plugin - Plugin generator command
 
 =head1 SYNOPSIS
 
@@ -41,16 +39,14 @@ Mojolicious::Command::Author::generate::plugin - Plugin generator command
 
     mojo generate plugin
     mojo generate plugin TestPlugin
-    mojo generate plugin -f MyApp::Plugin::AwesomeFeature
 
   Options:
-    -f, --full   Do not prepend "Mojolicious::Plugin::" to the plugin name
     -h, --help   Show this summary of available options
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::generate::plugin> generates directory structures
-for fully functional L<Mojolicious> plugins.
+L<Mojolicious::Command::generate::plugin> generates directory structures for
+fully functional L<Mojolicious> plugins.
 
 This is a core command, that means it is always enabled and its code a good
 example for learning to build new commands, you're welcome to fork it.
@@ -60,7 +56,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::generate::plugin> inherits all attributes from
+L<Mojolicious::Command::generate::plugin> inherits all attributes from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 description
@@ -68,18 +64,18 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $plugin->description;
   $plugin         = $plugin->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $plugin->usage;
   $plugin   = $plugin->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::generate::plugin> inherits all methods from
+L<Mojolicious::Command::generate::plugin> inherits all methods from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
@@ -90,13 +86,14 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut
 
 __DATA__
 
 @@ class
+% my ($class, $name) = @_;
 package <%= $class %>;
 use Mojo::Base 'Mojolicious::Plugin';
 
@@ -107,6 +104,7 @@ sub register {
 }
 
 1;
+<% %>__END__
 
 <% %>=encoding utf8
 
@@ -139,11 +137,12 @@ Register plugin in L<Mojolicious> application.
 
 <% %>=head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 <% %>=cut
 
 @@ test
+% my $name = shift;
 use Mojo::Base -strict;
 
 use Test::More;
@@ -163,6 +162,7 @@ $t->get_ok('/')->status_is(200)->content_is('Hello Mojo!');
 done_testing();
 
 @@ makefile
+% my ($class, $path) = @_;
 use strict;
 use warnings;
 

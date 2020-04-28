@@ -1,31 +1,21 @@
 package Mojolicious::Routes;
 use Mojo::Base 'Mojolicious::Routes::Route';
 
-use List::Util qw(first);
+use List::Util 'first';
 use Mojo::Cache;
-use Mojo::DynamicMethods;
-use Mojo::Loader qw(load_class);
-use Mojo::Util qw(camelize);
+use Mojo::Loader 'load_class';
+use Mojo::Util 'camelize';
 use Mojolicious::Routes::Match;
+use Scalar::Util 'weaken';
 
-has base_classes => sub { [qw(Mojolicious::Controller Mojolicious)] };
+has base_classes => sub { [qw(Mojolicious::Controller Mojo)] };
 has cache        => sub { Mojo::Cache->new };
 has [qw(conditions shortcuts)] => sub { {} };
-has types                      => sub { {num => qr/[0-9]+/} };
-has hidden                     => sub { [qw(attr has new tap)] };
-has namespaces                 => sub { [] };
+has hidden     => sub { [qw(attr has new tap)] };
+has namespaces => sub { [] };
 
 sub add_condition { $_[0]->conditions->{$_[1]} = $_[2] and return $_[0] }
-
-sub add_shortcut {
-  my ($self, $name, $cb) = @_;
-  $self->shortcuts->{$name} = $cb;
-  Mojo::DynamicMethods::register 'Mojolicious::Routes::Route', $self, $name,
-    $cb;
-  return $self;
-}
-
-sub add_type { $_[0]->types->{$_[1]} = $_[2] and return $_[0] }
+sub add_shortcut  { $_[0]->shortcuts->{$_[1]}  = $_[2] and return $_[0] }
 
 sub continue {
   my ($self, $c) = @_;
@@ -79,7 +69,7 @@ sub match {
   $method = 'GET' if $method eq 'HEAD';
 
   # Check cache
-  my $ws    = $c->tx->is_websocket ? 1 : 0;
+  my $ws = $c->tx->is_websocket ? 1 : 0;
   my $match = Mojolicious::Routes::Match->new(root => $self);
   $c->match($match);
   my $cache = $self->cache;
@@ -89,7 +79,7 @@ sub match {
 
   # Check routes
   $match->find($c => {method => $method, path => $path, websocket => $ws});
-  return undef unless my $route = $match->endpoint;
+  return unless my $route = $match->endpoint;
   $cache->set(
     "$method:$path:$ws" => {endpoint => $route, stack => $match->stack});
 }
@@ -99,8 +89,9 @@ sub _action { shift->plugins->emit_chain(around_action => @_) }
 sub _callback {
   my ($self, $c, $cb, $last) = @_;
   $c->stash->{'mojo.routed'} = 1 if $last;
-  $c->helpers->log->debug('Routing to a callback');
-  return _action($c->app, $c, $cb, $last);
+  my $app = $c->app;
+  $app->log->debug('Routing to a callback');
+  return _action($app, $c, $cb, $last);
 }
 
 sub _class {
@@ -116,15 +107,15 @@ sub _class {
 
   # Specific namespace
   elsif (defined(my $ns = $field->{namespace})) {
-    if    ($class) { push @classes, $ns ? "${ns}::$class" : $class }
-    elsif ($ns)    { push @classes, $ns }
+    if ($class) { push @classes, $ns ? "${ns}::$class" : $class }
+    elsif ($ns) { push @classes, $ns }
   }
 
   # All namespaces
   elsif ($class) { push @classes, "${_}::$class" for @{$self->namespaces} }
 
   # Try to load all classes
-  my $log = $c->helpers->log;
+  my $log = $c->app->log;
   for my $class (@classes) {
 
     # Failed
@@ -132,7 +123,9 @@ sub _class {
     return !$log->debug(qq{Class "$class" is not a controller}) unless $found;
 
     # Success
-    return $class->new(%$c);
+    my $new = $class->new(%$c);
+    weaken $new->{$_} for qw(app tx);
+    return $new;
   }
 
   # Nothing found
@@ -149,14 +142,15 @@ sub _controller {
 
   # Application
   my $class = ref $new;
-  my $log   = $old->helpers->log;
-  if ($new->isa('Mojolicious')) {
+  my $app   = $old->app;
+  my $log   = $app->log;
+  if ($new->isa('Mojo')) {
     $log->debug(qq{Routing to application "$class"});
 
     # Try to connect routes
     if (my $sub = $new->can('routes')) {
       my $r = $new->$sub;
-      $r->parent($old->match->endpoint) unless $r->parent;
+      weaken $r->parent($old->match->endpoint)->{parent} unless $r->parent;
     }
     $new->handler($old);
     $old->stash->{'mojo.routed'} = 1;
@@ -169,7 +163,7 @@ sub _controller {
 
       if (my $sub = $new->can($method)) {
         $old->stash->{'mojo.routed'} = 1 if $last;
-        return 1 if _action($old->app, $new, $sub, $last);
+        return 1 if _action($app, $new, $sub, $last);
       }
 
       else { $log->debug('Action not found in controller') }
@@ -227,17 +221,6 @@ L<Mojolicious::Routes> is the core of the L<Mojolicious> web framework.
 
 See L<Mojolicious::Guides::Routing> for more.
 
-=head1 TYPES
-
-These placeholder types are available by default.
-
-=head2 num
-
-  $r->get('/article/<id:num>');
-
-Placeholder value needs to be a non-fractional number, similar to the regular
-expression C<([0-9]+)>.
-
 =head1 ATTRIBUTES
 
 L<Mojolicious::Routes> inherits all attributes from
@@ -249,7 +232,7 @@ L<Mojolicious::Routes::Route> and implements the following new ones.
   $r          = $r->base_classes(['MyApp::Controller']);
 
 Base classes used to identify controllers, defaults to
-L<Mojolicious::Controller> and L<Mojolicious>.
+L<Mojolicious::Controller> and L<Mojo>.
 
 =head2 cache
 
@@ -290,13 +273,6 @@ Namespaces to load controllers from.
 
 Contains all available shortcuts.
 
-=head2 types
-
-  my $types = $r->types;
-  $r        = $r->types({lower => qr/[a-z]+/});
-
-Registered placeholder types, by default only L</"num"> is already defined.
-
 =head1 METHODS
 
 L<Mojolicious::Routes> inherits all methods from L<Mojolicious::Routes::Route>
@@ -324,15 +300,6 @@ Register a shortcut.
     my ($route, @args) = @_;
     ...
   });
-
-=head2 add_type
-
-  $r = $r->add_type(foo => qr/\w+/);
-  $r = $r->add_type(foo => ['bar', 'baz']);
-
-Register a placeholder type.
-
-  $r->add_type(lower => qr/[a-z]+/);
 
 =head2 continue
 
@@ -374,6 +341,6 @@ Match routes with L<Mojolicious::Routes::Match>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

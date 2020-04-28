@@ -8,7 +8,7 @@ BEGIN {
 
 use Test::More;
 use ojo;
-use File::Basename qw(basename);
+use File::Basename 'basename';
 
 # Application
 a('/' => sub { $_->render(data => $_->req->method . $_->req->body) })
@@ -61,7 +61,7 @@ is r([1, 2]), "[\n  1,\n  2\n]\n", 'right result';
   is $i,        1,             'block has been executed once';
   like $buffer, qr/wallclock/, 'right output';
   n { $i++ } 10;
-  is $i,        11,                        'block has been executed ten times';
+  is $i, 11, 'block has been executed ten times';
   like $buffer, qr/wallclock.*wallclock/s, 'right output';
 }
 

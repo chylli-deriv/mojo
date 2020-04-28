@@ -5,19 +5,16 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Test::More;
 
 plan skip_all => 'set TEST_PREFORK to enable this test (developer only!)'
-  unless $ENV{TEST_PREFORK} || $ENV{TEST_ALL};
+  unless $ENV{TEST_PREFORK};
 
-use Mojo::File qw(curfile path tempdir);
+use Mojo::File 'path';
 use Mojo::IOLoop::Server;
 use Mojo::Server::Prefork;
 use Mojo::UserAgent;
 
 # Manage and clean up PID file
 my $prefork = Mojo::Server::Prefork->new;
-my $dir     = tempdir;
-ok $prefork->pid_file, 'has default path';
-my $file = $dir->child('prefork.pid');
-$prefork->pid_file($file);
+my $file    = $prefork->pid_file;
 ok !$prefork->check_pid, 'no process id';
 $prefork->ensure_pid_file(-23);
 ok -e $file, 'file exists';
@@ -32,11 +29,11 @@ undef $prefork;
 ok !-e $file, 'file has been cleaned up';
 
 # Bad PID file
-my $bad = curfile->sibling('does_not_exist', 'test.pid');
+my $bad = path(__FILE__)->sibling('does_not_exist', 'test.pid');
 $prefork = Mojo::Server::Prefork->new(pid_file => $bad);
-$prefork->app->log->level('debug')->unsubscribe('message');
+$prefork->app->log->level('fatal');
 my $log = '';
-my $cb  = $prefork->app->log->on(message => sub { $log .= pop });
+my $cb = $prefork->app->log->on(message => sub { $log .= pop });
 eval { $prefork->ensure_pid_file($$) };
 like $@,     qr/Can't create process id file/, 'right error';
 unlike $log, qr/Creating process id file/,     'right message';
@@ -47,8 +44,7 @@ $prefork->app->log->unsubscribe(message => $cb);
 my $port = Mojo::IOLoop::Server::->generate_port;
 $prefork = Mojo::Server::Prefork->new(
   heartbeat_interval => 0.5,
-  listen             => ["http://*:$port"],
-  pid_file           => $file
+  listen             => ["http://*:$port"]
 );
 $prefork->unsubscribe('request');
 $prefork->on(
@@ -70,21 +66,12 @@ $prefork->on(
     kill 'QUIT', $$;
   }
 );
-$prefork->on(reap   => sub { push @reap, pop });
+$prefork->on(reap => sub { push @reap, pop });
 $prefork->on(finish => sub { $graceful = pop });
-$prefork->app->log->level('debug')->unsubscribe('message');
 $log = '';
-$cb  = $prefork->app->log->on(message => sub { $log .= pop });
+$cb = $prefork->app->log->on(message => sub { $log .= pop });
 is $prefork->healthy, 0, 'no healthy workers';
-my @server;
-$prefork->app->hook(
-  before_server_start => sub {
-    my ($server, $app) = @_;
-    push @server, $server->workers, $app->mode;
-  }
-);
 $prefork->run;
-is_deeply \@server, [4, 'development'], 'hook has been emitted once';
 is scalar @spawn, 4, 'four workers spawned';
 is scalar @reap,  4, 'four workers reaped';
 ok !!grep { $worker eq $_ } @spawn, 'worker has a heartbeat';
@@ -92,13 +79,12 @@ ok $graceful, 'server has been stopped gracefully';
 is_deeply [sort @spawn], [sort @reap], 'same process ids';
 is $tx->res->code, 200,           'right status';
 is $tx->res->body, 'just works!', 'right content';
-like $log, qr/Listening at/,             'right message';
-like $log, qr/Manager $$ started/,       'right message';
-like $log, qr/Creating process id file/, 'right message';
-like $log, qr/Stopping worker $spawn[0] gracefully \(120 seconds\)/,
-  'right message';
-like $log, qr/Worker $spawn[0] stopped/, 'right message';
-like $log, qr/Manager $$ stopped/,       'right message';
+like $log, qr/Listening at/,                         'right message';
+like $log, qr/Manager $$ started/,                   'right message';
+like $log, qr/Creating process id file/,             'right message';
+like $log, qr/Stopping worker $spawn[0] gracefully/, 'right message';
+like $log, qr/Worker $spawn[0] stopped/,             'right message';
+like $log, qr/Manager $$ stopped/,                   'right message';
 $prefork->app->log->unsubscribe(message => $cb);
 
 # Process id file
@@ -133,7 +119,7 @@ $prefork->once(
     kill 'TERM', $$;
   }
 );
-$prefork->on(reap   => sub { push @reap, pop });
+$prefork->on(reap => sub { push @reap, pop });
 $prefork->on(finish => sub { $graceful = pop });
 $prefork->run;
 is $prefork->ioloop->max_accepts, 500, 'right value';

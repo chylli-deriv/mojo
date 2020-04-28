@@ -1,11 +1,10 @@
 package Mojolicious::Command::eval;
 use Mojo::Base 'Mojolicious::Command';
 
-use Mojo::Promise;
-use Mojo::Util qw(getopt);
+use Mojo::Util 'getopt';
 
 has description => 'Run code against application';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
   my ($self, @args) = @_;
@@ -14,17 +13,10 @@ sub run {
   my $code = shift @args || '';
 
   # Run code against application
-  my $app    = $self->app;
+  my $app = $self->app;
+  no warnings;
   my $result = eval "package main; sub app; local *app = sub { \$app }; $code";
-  die $@ if $@;
-
-  # Handle promises
-  my $err;
-  Mojo::Promise->resolve($result)
-    ->then(sub { $result = shift }, sub { $err = shift })->wait;
-  die $err if $err;
-
-  return $result unless defined $result && ($v1 || $v2);
+  return $@ ? die $@ : $result unless defined $result && ($v1 || $v2);
   $v2 ? print($app->dumper($result)) : say $result;
 }
 
@@ -56,9 +48,7 @@ Mojolicious::Command::eval - Eval command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::eval> runs code against applications. If the result is a
-promise (then-able), it will wait until the promise is fulfilled or rejected and
-the result is returned.
+L<Mojolicious::Command::eval> runs code against applications.
 
 This is a core command, that means it is always enabled and its code a good
 example for learning to build new commands, you're welcome to fork it.
@@ -76,14 +66,14 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $eval->description;
   $eval           = $eval->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $eval->usage;
   $eval     = $eval->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
@@ -98,6 +88,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

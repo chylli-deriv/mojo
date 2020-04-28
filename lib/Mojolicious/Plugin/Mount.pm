@@ -30,7 +30,7 @@ Mojolicious::Plugin::Mount - Application mount plugin
 =head1 SYNOPSIS
 
   # Mojolicious
-  my $route = $app->plugin(Mount => {'/prefix' => '/home/sri/foo/script/foo'});
+  my $route = $app->plugin(Mount => {'/prefix' => '/home/sri/myapp.pl'});
 
   # Mojolicious::Lite
   my $route = plugin Mount => {'/prefix' => '/home/sri/myapp.pl'};
@@ -76,6 +76,6 @@ usually a L<Mojolicious::Routes::Route> object.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

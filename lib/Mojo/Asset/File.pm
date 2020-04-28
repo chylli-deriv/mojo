@@ -1,10 +1,10 @@
 package Mojo::Asset::File;
 use Mojo::Base 'Mojo::Asset';
 
-use Carp qw(croak);
-use Fcntl qw(SEEK_SET);
+use Carp 'croak';
+use Fcntl 'SEEK_SET';
 use File::Spec::Functions ();
-use Mojo::File qw(tempfile);
+use Mojo::File 'tempfile';
 
 has [qw(cleanup path)];
 has handle => sub {
@@ -29,12 +29,9 @@ has tmpdir => sub { $ENV{MOJO_TMPDIR} || File::Spec::Functions::tmpdir };
 
 sub DESTROY {
   my $self = shift;
-
   return unless $self->cleanup && defined(my $path = $self->path);
   if (my $handle = $self->handle) { close $handle }
-
-  # Only the process that created the file is allowed to remove it
-  Mojo::File->new($path)->remove if -w $path && ($self->{pid} // $$) == $$;
+  unlink $path if -w $path;
 }
 
 sub add_chunk {
@@ -58,7 +55,7 @@ sub contains {
 
   # Sliding window search
   my $offset = 0;
-  my $start  = $handle->sysread(my $window, $len);
+  my $start = $handle->sysread(my $window, $len);
   while ($offset < $end) {
 
     # Read as much as possible
@@ -69,7 +66,7 @@ sub contains {
     # Search window
     my $pos = index $window, $str;
     return $offset + $pos if $pos >= 0;
-    return -1             if $read == 0 || ($offset += $read) == $end;
+    return -1 if $read == 0 || ($offset += $read) == $end;
 
     # Resize window
     substr $window, 0, $read, '';
@@ -112,12 +109,6 @@ sub move_to {
 
 sub mtime { (stat shift->handle)[9] }
 
-sub new {
-  my $file = shift->SUPER::new(@_);
-  $file->{pid} = $$;
-  return $file;
-}
-
 sub size { -s shift->handle }
 
 sub slurp {
@@ -127,8 +118,6 @@ sub slurp {
   while ($ret = $handle->sysread(my $buffer, 131072, 0)) { $content .= $buffer }
   return defined $ret ? $content : croak "Can't read from asset: $!";
 }
-
-sub to_file {shift}
 
 1;
 
@@ -219,7 +208,7 @@ Check if asset contains a specific string.
   my $bytes = $file->get_chunk($offset, $max);
 
 Get chunk of data starting from a specific position, defaults to a maximum
-chunk size of C<131072> bytes (128KiB).
+chunk size of C<131072> bytes (128KB).
 
 =head2 is_file
 
@@ -239,14 +228,6 @@ Move asset data into a specific file and disable L</"cleanup">.
 
 Modification time of asset.
 
-=head2 new
-
-  my $file = Mojo::Asset::File->new;
-  my $file = Mojo::Asset::File->new(path => '/home/sri/test.txt');
-  my $file = Mojo::Asset::File->new({path => '/home/sri/test.txt'});
-
-Construct a new L<Mojo::Asset::File> object.
-
 =head2 size
 
   my $size = $file->size;
@@ -259,15 +240,8 @@ Size of asset data in bytes.
 
 Read all asset data at once.
 
-=head2 to_file
-
-  $file = $file->to_file;
-
-Does nothing but return the invocant, since we already have a
-L<Mojo::Asset::File> object.
-
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

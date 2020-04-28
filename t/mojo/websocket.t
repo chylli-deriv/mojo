@@ -3,9 +3,8 @@ use Mojo::Base -strict;
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
 use Test::More;
-use Mojo::ByteStream qw(b);
+use Mojo::ByteStream 'b';
 use Mojo::IOLoop;
-use Mojo::Promise;
 use Mojo::Transaction::WebSocket;
 use Mojo::UserAgent;
 use Mojolicious::Lite;
@@ -18,7 +17,7 @@ use Mojolicious::Lite;
 }
 
 # Silence
-app->log->level('debug')->unsubscribe('message');
+app->log->level('fatal');
 
 # Avoid exception template
 app->renderer->paths->[0] = app->home->child('public');
@@ -123,13 +122,13 @@ websocket '/timeout' => sub {
 
 # URL for WebSocket
 my $ua  = app->ua;
-my $res = $ua->get('/link')->result;
-is $res->code,   200,                        'right status';
+my $res = $ua->get('/link')->success;
+is $res->code, 200, 'right status';
 like $res->body, qr!ws://127\.0\.0\.1:\d+/!, 'right content';
 
 # Plain HTTP request
 $res = $ua->get('/early_start')->res;
-is $res->code,   404,                'right status';
+is $res->code, 404, 'right status';
 like $res->body, qr/Page not found/, 'right content';
 
 # Plain WebSocket
@@ -138,7 +137,7 @@ app->plugins->once(before_dispatch => sub { $stash = shift->stash });
 $ua->websocket(
   '/' => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send('test1');
   }
@@ -231,7 +230,7 @@ $ua->websocket(
     my ($ua, $tx) = @_;
     $code = $tx->res->code;
     $tx->on(message => sub { $result .= pop });
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
   }
 );
 Mojo::IOLoop->start;
@@ -265,7 +264,7 @@ $ua->websocket(
     my ($ua, $tx) = @_;
     $code2 = $tx->res->code;
     $tx->on(message => sub { $result2 .= pop });
-    $tx->on(finish  => sub { $end2->() });
+    $tx->on(finish => sub { $end2->() });
   }
 );
 $delay->wait;
@@ -326,33 +325,13 @@ $result = undef;
 $ua->websocket(
   '/trim' => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send(b(' foo bar '));
   }
 );
 Mojo::IOLoop->start;
 is $result, 'foo bar', 'right result';
-
-# Promises
-$result = undef;
-$ua->websocket_p('/trim')->then(sub {
-  my $tx      = shift;
-  my $promise = Mojo::Promise->new;
-  $tx->on(finish  => sub { $promise->resolve });
-  $tx->on(message => sub { shift->finish; $result = pop });
-  $tx->send(' also works! ');
-  return $promise;
-})->wait;
-is $result, 'also works!', 'right result';
-$result = undef;
-$ua->websocket_p('/foo')->then(sub { $result = 'test failed' })
-  ->catch(sub { $result = shift })->wait;
-is $result, 'WebSocket handshake failed', 'right result';
-$result = undef;
-$ua->websocket_p($ua->server->url->to_abs->scheme('wsss'))
-  ->then(sub { $result = 'test failed' })->catch(sub { $result = shift })->wait;
-is $result, 'Unsupported protocol: wsss', 'right result';
 
 # Dies
 ($ws, $code, $msg) = ();
@@ -370,8 +349,8 @@ $ua->websocket(
 Mojo::IOLoop->start;
 ok $finished, 'transaction is finished';
 ok !$ws, 'not a websocket';
-is $code, 500,                     'right status';
-is $msg,  'Internal Server Error', 'right message';
+is $code, 500, 'right status';
+is $msg, 'Internal Server Error', 'right message';
 
 # Forbidden
 ($ws, $code, $msg) = ();
@@ -418,7 +397,7 @@ $result = undef;
 $ua->websocket(
   '/echo' => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send('hi!' x 100);
   }
@@ -428,7 +407,7 @@ is $result, 'hi!' x 100, 'right result';
 
 # Timeout
 my $log = '';
-$msg   = app->log->on(message => sub { $log .= pop });
+$msg = app->log->on(message => sub { $log .= pop });
 $stash = undef;
 app->plugins->once(before_dispatch => sub { $stash = shift->stash });
 $ua->websocket(

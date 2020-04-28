@@ -4,7 +4,7 @@ use Mojo::Base 'Mojolicious::Command';
 use Mojo::Server::PSGI;
 
 has description => 'Start application with PSGI';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run { Mojo::Server::PSGI->new(app => shift->app)->to_psgi_app }
 
@@ -50,14 +50,14 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $psgi->description;
   $psgi           = $psgi->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $psgi->usage;
   $psgi     = $psgi->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
@@ -72,6 +72,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -1,16 +1,15 @@
 package Mojo::IOLoop::Server;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp qw(croak);
+use Carp 'croak';
 use IO::Socket::IP;
 use IO::Socket::UNIX;
-use Mojo::File qw(path);
 use Mojo::IOLoop;
 use Mojo::IOLoop::TLS;
-use Scalar::Util qw(weaken);
+use Scalar::Util 'weaken';
 use Socket qw(IPPROTO_TCP TCP_NODELAY);
 
-has reactor => sub { Mojo::IOLoop->singleton->reactor }, weak => 1;
+has reactor => sub { Mojo::IOLoop->singleton->reactor };
 
 sub DESTROY {
   my $self = shift;
@@ -46,7 +45,7 @@ sub listen {
   # Reuse file descriptor
   my $handle;
   my $class = $path ? 'IO::Socket::UNIX' : 'IO::Socket::IP';
-  if (defined($fd //= $args->{fd})) {
+  if (defined $fd) {
     $handle = $class->new_from_fd($fd, 'r')
       or croak "Can't open file descriptor $fd: $!";
   }
@@ -58,16 +57,16 @@ sub listen {
     # UNIX domain socket
     my $reuse;
     if ($path) {
-      path($path)->remove if -S $path;
+      unlink $path if -S $path;
       $options{Local} = $path;
       $handle = $class->new(%options) or croak "Can't create listen socket: $!";
-      $reuse  = $self->{reuse} = join ':', 'unix', $path, fileno $handle;
+      $reuse = $self->{reuse} = join ':', 'unix', $path, fileno $handle;
     }
 
     # IP socket
     else {
       $options{LocalAddr} = $address;
-      $options{LocalAddr} =~ y/[]//d;
+      $options{LocalAddr} =~ s/[\[\]]//g;
       $options{LocalPort} = $port if $port;
       $options{ReuseAddr} = 1;
       $options{ReusePort} = $args->{reuse};
@@ -81,7 +80,7 @@ sub listen {
   $handle->blocking(0);
   @$self{qw(args handle)} = ($args, $handle);
 
-  croak 'IO::Socket::SSL 2.009+ required for TLS support'
+  croak 'IO::Socket::SSL 1.94+ required for TLS support'
     if !Mojo::IOLoop::TLS->can_tls && $args->{tls};
 }
 
@@ -91,8 +90,7 @@ sub start {
   my $self = shift;
   weaken $self;
   ++$self->{active}
-    and $self->reactor->io($self->{handle} => sub { $self->_accept })
-    ->watch($self->{handle}, 1, 0);
+    and $self->reactor->io($self->{handle} => sub { $self->_accept });
 }
 
 sub stop { delete($_[0]{active}) and $_[0]->reactor->remove($_[0]{handle}) }
@@ -115,7 +113,7 @@ sub _accept {
     # Start TLS handshake
     my $tls = Mojo::IOLoop::TLS->new($handle)->reactor($self->reactor);
     $tls->on(upgrade => sub { $self->emit(accept => pop) });
-    $tls->on(error   => sub { });
+    $tls->on(error => sub { });
     $tls->negotiate(%$args, server => 1);
   }
 }
@@ -176,7 +174,7 @@ L<Mojo::IOLoop::Server> implements the following attributes.
   $server     = $server->reactor(Mojo::Reactor::Poll->new);
 
 Low-level event reactor, defaults to the C<reactor> attribute value of the
-global L<Mojo::IOLoop> singleton. Note that this attribute is weakened.
+global L<Mojo::IOLoop> singleton.
 
 =head1 METHODS
 
@@ -207,7 +205,7 @@ Check if connections are currently being accepted.
   $server->listen({port => 3000});
 
 Create a new listen socket. Note that TLS support depends on L<IO::Socket::SSL>
-(2.009+).
+(1.94+).
 
 These options are currently available:
 
@@ -224,12 +222,6 @@ Local address to listen on, defaults to C<0.0.0.0>.
   backlog => 128
 
 Maximum backlog size, defaults to C<SOMAXCONN>.
-
-=item fd
-
-  fd => 3
-
-File descriptor with an already prepared listen socket.
 
 =item path
 
@@ -289,17 +281,12 @@ L<https://www.openssl.org/docs/manmaster/apps/ciphers.html#CIPHER-STRINGS>.
 
 Path to the TLS key file, defaults to a built-in test key.
 
-=item tls_protocols
-
-  tls_protocols => ['foo', 'bar']
-
-ALPN protocols to negotiate.
-
 =item tls_verify
 
   tls_verify => 0x00
 
-TLS verification mode.
+TLS verification mode, defaults to C<0x03> if a certificate authority file has
+been provided, or C<0x00>.
 
 =item tls_version
 
@@ -329,6 +316,6 @@ Stop accepting connections.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

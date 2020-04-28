@@ -2,12 +2,11 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
-
-use Mojo::ByteStream qw(b);
+use Mojo::ByteStream 'b';
 use Mojo::UserAgent::CookieJar;
 use Mojolicious::Lite;
+use Test::Mojo;
 
 app->secrets(['test1']);
 
@@ -35,11 +34,13 @@ under('/missing' => sub {1})->route->to('does_not_exist#not_at_all');
 under '/suspended' => sub {
   my $c = shift;
 
-  Mojo::IOLoop->next_tick(sub {
-    return $c->render(text => 'stopped!') unless $c->param('ok');
-    $c->stash(suspended => 'suspended!');
-    $c->continue;
-  });
+  Mojo::IOLoop->next_tick(
+    sub {
+      return $c->render(text => 'stopped!') unless $c->param('ok');
+      $c->stash(suspended => 'suspended!');
+      $c->continue;
+    }
+  );
 
   return 0;
 };
@@ -102,7 +103,7 @@ hook after_dispatch => sub {
 };
 
 get '/late/session' => sub {
-  my $c    = shift;
+  my $c = shift;
   my $late = $c->session('late') || 'not yet!';
   $c->render(text => $late);
 };
@@ -207,9 +208,8 @@ $t->get_ok('/multi')->status_is(200)->header_is(Server => 'Mojolicious (Perl)')
 $t->get_ok('/missing')->status_is(404)->content_is("Oops!\n");
 
 # Suspended bridge
-$t->app->log->level('debug')->unsubscribe('message');
 my $log = '';
-my $cb  = $t->app->log->on(message => sub { $log .= pop });
+my $cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/suspended?ok=1')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('suspended!');
 like $log, qr!GET "/suspended"!,      'right message';
@@ -264,23 +264,15 @@ is $stash->{_name}, 'stash', 'right "_name" value';
 
 # Cookies, session and flash
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/bridge2stash')->status_is(200)
   ->content_is(
   "stash too!cookie!!signed_cookie!!bad_cookie--12345678!session!flash!\n");
-like $log, qr/Cookie "foo" is not signed/,     'right message';
-like $log, qr/Cookie "bad" has bad signature/, 'right message';
+like $log, qr/Cookie "foo" is not signed/,       'right message';
+like $log, qr/Cookie "bad" has a bad signature/, 'right message';
 ok $t->tx->res->cookie('mojolicious')->httponly,
   'session cookie has HttpOnly flag';
-is $t->tx->res->cookie('mojolicious')->samesite, 'Lax', 'right SameSite value';
 $t->app->log->unsubscribe(message => $cb);
-$t->app->sessions->samesite('Strict');
-$t->get_ok('/bridge2stash')->status_is(200);
-is $t->tx->res->cookie('mojolicious')->samesite, 'Strict',
-  'right SameSite value';
-$t->app->sessions->samesite(undef);
-$t->get_ok('/bridge2stash')->status_is(200);
-is $t->tx->res->cookie('mojolicious')->samesite, undef, 'no SameSite value';
 
 # Broken session cookie
 $t->reset_session;

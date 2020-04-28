@@ -1,8 +1,6 @@
 use Mojo::Base -strict;
 
 use Test::More;
-use Carp qw(croak);
-use Config;
 use Mojo::Asset::File;
 use Mojo::Asset::Memory;
 use Mojo::File qw(path tempdir);
@@ -18,7 +16,6 @@ is $file->contains('bc'),  1,  '"bc" at position 1';
 is $file->contains('db'),  -1, 'does not contain "db"';
 is $file->size, 3, 'right size';
 is $file->mtime, (stat $file->handle)[9], 'right mtime';
-is $file->to_file, $file, 'same object';
 
 # Cleanup
 my $path = $file->path;
@@ -37,17 +34,6 @@ is $mem->mtime, $^T, 'right mtime';
 is $mem->mtime, Mojo::Asset::Memory->new->mtime, 'same mtime';
 my $mtime = $mem->mtime;
 is $mem->mtime($mtime + 23)->mtime, $mtime + 23, 'right mtime';
-
-# Asset upgrade from memory to file
-$mem = Mojo::Asset::Memory->new;
-$mem->add_chunk('abcdef');
-isa_ok $mem->to_file, 'Mojo::Asset::File', 'right class';
-is $mem->to_file->slurp, $mem->slurp, 'same content';
-$file = $mem->to_file;
-$path = $file->path;
-ok -e $path, 'file exists';
-undef $file;
-ok !-e $path, 'file has been cleaned up';
 
 # Empty file asset
 $file = Mojo::Asset::File->new;
@@ -257,22 +243,6 @@ ok !-e $path, 'file has been cleaned up';
   like $@, qr/Can't write to asset: .*/, 'right error';
 }
 
-# Forked process
-SKIP: {
-  skip 'Real fork is required!', 5 if $Config{d_pseudofork};
-  $file = Mojo::Asset::File->new->add_chunk('Fork test!');
-  $path = $file->path;
-  ok -e $path, 'file exists';
-  is $file->slurp, 'Fork test!', 'right content';
-  croak "Can't fork: $!" unless defined(my $pid = fork);
-  exit 0 unless $pid;
-  waitpid $pid, 0 if $pid;
-  ok -e $path, 'file still exists';
-  is $file->slurp, 'Fork test!', 'right content';
-  undef $file;
-  ok !-e $path, 'file has been cleaned up';
-}
-
 # Abstract methods
 eval { Mojo::Asset->add_chunk };
 like $@, qr/Method "add_chunk" not implemented by subclass/, 'right error';
@@ -288,7 +258,5 @@ eval { Mojo::Asset->size };
 like $@, qr/Method "size" not implemented by subclass/, 'right error';
 eval { Mojo::Asset->slurp };
 like $@, qr/Method "slurp" not implemented by subclass/, 'right error';
-eval { Mojo::Asset->to_file };
-like $@, qr/Method "to_file" not implemented by subclass/, 'right error';
 
 done_testing();

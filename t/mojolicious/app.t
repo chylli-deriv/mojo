@@ -6,19 +6,18 @@ BEGIN {
   $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll';
 }
 
-use Test::Mojo;
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 use Mojo::Asset::File;
 use Mojo::Date;
-use Mojo::File qw(path);
-use Mojo::Home;
+use Mojo::File 'path';
 use Mojo::IOLoop;
 use Mojolicious;
 use Mojolicious::Controller;
+use Test::Mojo;
 
 # Missing config file
 {
@@ -41,23 +40,7 @@ use Mojolicious::Controller;
   is(Test::Mojo->new('MojoliciousTest')->app->mode, 'else', 'right mode');
 }
 
-# Optional home detection
-my @path = qw(th is mojo dir wil l never-ever exist);
-my $app  = Mojolicious->new(home => Mojo::Home->new(@path));
-is $app->home, path(@path), 'right home directory';
-
-# Config override
 my $t = Test::Mojo->new('MojoliciousTest');
-ok !$t->app->config->{config_override}, 'no override';
-ok !$t->app->config->{foo},             'no value';
-$t = Test::Mojo->new('MojoliciousTest', {foo => 'bar'});
-ok $t->app->config->{config_override}, 'override';
-is $t->app->config->{foo}, 'bar', 'right value';
-$t = Test::Mojo->new(MojoliciousTest->new, {foo => 'baz'});
-ok $t->app->config->{config_override}, 'override';
-is $t->app->config->{foo}, 'baz', 'right value';
-
-$t = Test::Mojo->new('MojoliciousTest');
 
 # Application is already available
 is $t->app->routes->find('something')->to_string, '/test4/:something',
@@ -73,11 +56,7 @@ is ref $t->app->routes->find('something')->root, 'Mojolicious::Routes',
 is $t->app->sessions->cookie_domain, '.example.com', 'right domain';
 is $t->app->sessions->cookie_path,   '/bar',         'right path';
 is_deeply $t->app->commands->namespaces,
-  [
-  'Mojolicious::Command::Author', 'Mojolicious::Command',
-  'MojoliciousTest::Command'
-  ],
-  'right namespaces';
+  [qw(Mojolicious::Command MojoliciousTest::Command)], 'right namespaces';
 is $t->app, $t->app->commands->app, 'applications are equal';
 is $t->app->static->file('hello.txt')->slurp,
   "Hello Mojo from a development static file!\n", 'right content';
@@ -124,17 +103,20 @@ ok $t->app->routes->is_hidden('DESTROY'),             'is hidden';
 ok $t->app->routes->is_hidden('FOO_BAR'),             'is hidden';
 ok $t->app->routes->is_hidden('app'),                 'is hidden';
 ok $t->app->routes->is_hidden('attr'),                'is hidden';
+ok $t->app->routes->is_hidden('continue'),            'is hidden';
 ok $t->app->routes->is_hidden('cookie'),              'is hidden';
 ok $t->app->routes->is_hidden('every_cookie'),        'is hidden';
 ok $t->app->routes->is_hidden('every_param'),         'is hidden';
 ok $t->app->routes->is_hidden('every_signed_cookie'), 'is hidden';
 ok $t->app->routes->is_hidden('finish'),              'is hidden';
+ok $t->app->routes->is_hidden('flash'),               'is hidden';
 ok $t->app->routes->is_hidden('has'),                 'is hidden';
 ok $t->app->routes->is_hidden('helpers'),             'is hidden';
 ok $t->app->routes->is_hidden('match'),               'is hidden';
 ok $t->app->routes->is_hidden('new'),                 'is hidden';
 ok $t->app->routes->is_hidden('on'),                  'is hidden';
 ok $t->app->routes->is_hidden('param'),               'is hidden';
+ok $t->app->routes->is_hidden('redirect_to'),         'is hidden';
 ok $t->app->routes->is_hidden('render'),              'is hidden';
 ok $t->app->routes->is_hidden('render_later'),        'is hidden';
 ok $t->app->routes->is_hidden('render_maybe'),        'is hidden';
@@ -142,6 +124,7 @@ ok $t->app->routes->is_hidden('render_to_string'),    'is hidden';
 ok $t->app->routes->is_hidden('rendered'),            'is hidden';
 ok $t->app->routes->is_hidden('req'),                 'is hidden';
 ok $t->app->routes->is_hidden('res'),                 'is hidden';
+ok $t->app->routes->is_hidden('respond_to'),          'is hidden';
 ok $t->app->routes->is_hidden('send'),                'is hidden';
 ok $t->app->routes->is_hidden('session'),             'is hidden';
 ok $t->app->routes->is_hidden('signed_cookie'),       'is hidden';
@@ -149,6 +132,7 @@ ok $t->app->routes->is_hidden('stash'),               'is hidden';
 ok $t->app->routes->is_hidden('tap'),                 'is hidden';
 ok $t->app->routes->is_hidden('tx'),                  'is hidden';
 ok $t->app->routes->is_hidden('url_for'),             'is hidden';
+ok $t->app->routes->is_hidden('validation'),          'is hidden';
 ok $t->app->routes->is_hidden('write'),               'is hidden';
 ok $t->app->routes->is_hidden('write_chunk'),         'is hidden';
 
@@ -178,9 +162,8 @@ $t->get_ok('/plugin-test-some_plugin2/register')->status_isnt(500)
   ->content_unlike(qr/Something/)->content_like(qr/Page not found/);
 
 # Plugin::Test::SomePlugin2::register (security violation again)
-$t->app->log->level('debug')->unsubscribe('message');
 my $log = '';
-my $cb  = $t->app->log->on(message => sub { $log .= pop });
+my $cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/plugin-test-some_plugin2/register')->status_isnt(500)
   ->status_is(404)->header_is(Server => 'Mojolicious (Perl)')
   ->content_unlike(qr/Something/)->content_like(qr/Page not found/);
@@ -222,20 +205,9 @@ $t->get_ok($url => {'X-Test' => 'Hi there!'})->status_isnt(404)->status_is(200)
   ->text_like('p', qr/fun/, 'with description')->text_unlike('p', qr/boring/)
   ->text_unlike('p', qr/boring/, 'with description');
 
-# Foo::joy (testing HTML attributes in template)
-$t->get_ok('/fun/joy')->status_is(200)
-  ->attr_is('p.joy', 'style', 'background-color: darkred;')
-  ->attr_is('p.joy', 'style', 'background-color: darkred;', 'with description')
-  ->attr_isnt('p.joy', 'style', 'float: left;')
-  ->attr_isnt('p.joy', 'style', 'float: left;', 'with description')
-  ->attr_like('p.joy', 'style', qr/color/)
-  ->attr_like('p.joy', 'style', qr/color/, 'with description')
-  ->attr_unlike('p.joy', 'style', qr/^float/)
-  ->attr_unlike('p.joy', 'style', qr/^float/, 'with description');
-
 # Foo::baz (missing action without template)
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/foo/baz')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_unlike(qr/Something/)
   ->content_like(qr/Page not found/);
@@ -244,7 +216,7 @@ $t->app->log->unsubscribe(message => $cb);
 
 # Foo::render (action not allowed)
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/foo/render')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
 like $log, qr/Action "render" is not allowed/, 'right message';
@@ -262,16 +234,16 @@ $t->get_ok('/syntax_error/foo')->status_is(500)
 
 # Foo::syntaxerror (syntax error in template)
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/foo/syntaxerror')->status_is(500)
   ->header_is(Server => 'Mojolicious (Perl)')
   ->content_like(qr/Missing right curly/);
 like $log, qr/Rendering template "syntaxerror.html.epl"/, 'right message';
-like $log, qr/Missing right curly/,                       'right message';
+like $log, qr/Missing right curly/, 'right message';
 like $log, qr/Template "exception.development.html.ep" not found/,
   'right message';
 like $log, qr/Rendering template "exception.html.epl"/, 'right message';
-like $log, qr/500 Internal Server Error/,               'right message';
+like $log, qr/500 Internal Server Error/, 'right message';
 $t->app->log->unsubscribe(message => $cb);
 
 # Exceptional::this_one_dies (action dies)
@@ -405,12 +377,12 @@ $t->get_ok('/' => {'X-Test' => 'Hi there!'})->status_is(404)
 # Static file /another/file (no extension)
 $t->get_ok('/another/file')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')
-  ->content_type_is('application/octet-stream')
+  ->content_type_is('text/plain;charset=UTF-8')
   ->content_like(qr/Hello Mojolicious!/);
 
 # Static directory /another
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/another')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)');
 like $log, qr/Controller "MojoliciousTest::Another" does not exist/,
@@ -418,7 +390,7 @@ like $log, qr/Controller "MojoliciousTest::Another" does not exist/,
 $t->app->log->unsubscribe(message => $cb);
 
 # Check Last-Modified header for static files
-my $path = curfile->sibling('public_dev', 'hello.txt');
+my $path = path($FindBin::Bin, 'public_dev', 'hello.txt');
 my $size = Mojo::Asset::File->new(path => $path)->size;
 my $mtime
   = Mojo::Date->new(Mojo::Asset::File->new(path => $path)->mtime)->to_string;
@@ -431,33 +403,15 @@ $t->get_ok('/hello.txt')->status_is(200)
   ->content_type_is('text/plain;charset=UTF-8')
   ->content_like(qr/Hello Mojo from a development static file!/);
 
-# Try to access a file which is not under the web root via path traversal
+# Try to access a file which is not under the web root via path
+# traversal
 $t->get_ok('/../../mojolicious/secret.txt')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
 
-# Try to access a file which is not under the web root via path traversal (goes
-# back and forth one directory)
-$t->get_ok('/another/../../../mojolicious/secret.txt')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Try to access a file which is not under the web root via path traversal
-# (triple dot)
+# Try to access a file which is not under the web root via path
+# traversal (triple dot)
 $t->get_ok('/.../mojolicious/secret.txt')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Try to access a file which is not under the web root via path traversal
-# (backslashes)
-$t->get_ok('/..\\..\\mojolicious\\secret.txt')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Try to access a file which is not under the web root via path traversal
-# (escaped backslashes)
-$t->get_ok('/..%5C..%5Cmojolicious%5Csecret.txt')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Check that backslashes in query or fragment parts don't block access
-$t->get_ok('/another/file?one=\\1#two=\\2')->status_is(200)
-  ->content_like(qr/Hello Mojolicious!/);
 
 # Check If-Modified-Since
 $t->get_ok('/hello.txt' => {'If-Modified-Since' => $mtime})->status_is(304)
@@ -467,11 +421,6 @@ $t->get_ok('/hello.txt' => {'If-Modified-Since' => $mtime})->status_is(304)
 my $etag = $t->tx->res->headers->etag;
 $t->get_ok('/hello.txt' => {'If-None-Match' => $etag})->status_is(304)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('');
-
-# Check weak If-None-Match against strong ETag
-$t->get_ok('/hello.txt' => {'If-None-Match' => qq{W/"$etag"}})->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')
-  ->content_like(qr/Hello Mojo from a development static file!/);
 
 # Check If-None-Match and If-Last-Modified
 $t->get_ok(
@@ -500,21 +449,18 @@ $t->get_ok('/just/some/template')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')
   ->content_is("Development template with high precedence.\n");
 
-{
-  # Check default development mode log level
-  local $ENV{MOJO_LOG_LEVEL};
-  is(Mojolicious->new->log->level, 'debug', 'right log level');
+# Check default development mode log level
+is(Mojolicious->new->log->level, 'debug', 'right log level');
 
-  # Check non-development mode log level
-  is(Mojolicious->new->mode('test')->log->level, 'info', 'right log level');
-}
+# Check non-development mode log level
+is(Mojolicious->new->mode('test')->log->level, 'info', 'right log level');
 
 # Make sure we can override attributes with constructor arguments
-is(MojoliciousTest->new(mode => 'test')->mode,   'test', 'right mode');
+is(MojoliciousTest->new(mode => 'test')->mode, 'test', 'right mode');
 is(MojoliciousTest->new({mode => 'test'})->mode, 'test', 'right mode');
 
 # Persistent error
-$app = MojoliciousTest->new;
+my $app = MojoliciousTest->new;
 my $tx = $t->ua->build_tx(GET => '/foo');
 $app->handler($tx);
 is $tx->res->code, 200, 'right status';
@@ -568,9 +514,8 @@ $t->get_ok('/foo/routes')->status_is(200)
   ->header_is(Server     => 'Mojolicious (Perl)')->content_is('/foo/routes');
 
 # SingleFileTestApp::Redispatch::handler
-$t->app->log->level('debug')->unsubscribe('message');
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/redispatch')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('Redispatch!');
 like $log, qr/Routing to application "SingleFileTestApp::Redispatch"/,
@@ -608,9 +553,8 @@ $t->get_ok('/staged')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('Go away!');
 
 # MojoliciousTestController::Foo::suspended
-$t->app->log->level('debug')->unsubscribe('message');
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/suspended')->status_is(200)
   ->header_is(Server        => 'Mojolicious (Perl)')
   ->header_is('X-Suspended' => '0, 1, 1, 2')->content_is('<p>Have fun!</p>');
@@ -655,29 +599,19 @@ $t->get_ok('/foo/session')->status_is(200)
 $t->get_ok('/rss.xml')->status_is(200)->content_type_is('application/rss+xml')
   ->content_like(qr!<\?xml version="1.0" encoding="UTF-8"\?><rss />!);
 
-# Missing controller has no side effects
-$t->get_ok('/side_effects-test/index')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is('pass');
-$t->get_ok('/side_effects/index')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)');
-$t->get_ok('/side_effects/index')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)');
-$t->get_ok('/side_effects-test/index')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is('pass');
-
-# Transaction already destroyed
+# Connection already closed
 eval { Mojolicious::Controller->new->finish };
-like $@, qr/Transaction already destroyed/, 'right error';
+like $@, qr/Connection already closed/, 'right error';
 eval {
   Mojolicious::Controller->new->on(finish => sub { });
 };
-like $@, qr/Transaction already destroyed/, 'right error';
+like $@, qr/Connection already closed/, 'right error';
 eval { Mojolicious::Controller->new->req };
-like $@, qr/Transaction already destroyed/, 'right error';
+like $@, qr/Connection already closed/, 'right error';
 eval { Mojolicious::Controller->new->res };
-like $@, qr/Transaction already destroyed/, 'right error';
+like $@, qr/Connection already closed/, 'right error';
 eval { Mojolicious::Controller->new->send('whatever') };
-like $@, qr/Transaction already destroyed/, 'right error';
+like $@, qr/Connection already closed/, 'right error';
 
 # Abstract methods
 eval { Mojolicious::Plugin->register };

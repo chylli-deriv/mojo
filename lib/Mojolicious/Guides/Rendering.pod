@@ -352,7 +352,7 @@ L<Mojolicious::Plugin::DefaultHelpers/"dumper">, and tag helpers like
 L<Mojolicious::Plugin::TagHelpers/"link_to">, which are template specific and
 mostly used to generate HTML tags.
 
-  %= link_to Mojolicious => 'https://mojolicious.org'
+  %= link_to Mojolicious => 'http://mojolicious.org'
 
 In controllers you can also use the method L<Mojolicious::Controller/"helpers">
 to fully qualify helper calls and ensure that they don't conflict with existing
@@ -366,9 +366,8 @@ L<Mojolicious::Plugin::DefaultHelpers> and L<Mojolicious::Plugin::TagHelpers>.
 =head2 Content negotiation
 
 For resources with different representations and that require truly RESTful
-content negotiation you can also use
-L<Mojolicious::Plugin::DefaultHelpers/"respond_to"> instead of
-L<Mojolicious::Controller/"render">.
+content negotiation you can also use L<Mojolicious::Controller/"respond_to">
+instead of L<Mojolicious::Controller/"render">.
 
   # /hello (Accept: application/json) -> "json"
   # /hello (Accept: application/xml)  -> "xml"
@@ -382,10 +381,10 @@ L<Mojolicious::Controller/"render">.
   );
 
 The best possible representation will be automatically selected from the
-C<format> C<GET>/C<POST> parameter, C<format> stash value or C<Accept> request
-header and stored in the C<format> stash value. To change MIME type mappings for
-the C<Accept> request header or the C<Content-Type> response header you can use
-L<Mojolicious/"types">.
+C<Accept> request header, C<format> stash value or C<format> C<GET>/C<POST>
+parameter and stored in the C<format> stash value. To change MIME type mappings
+for the C<Accept> request header or the C<Content-Type> response header you can
+use L<Mojolicious/"types">.
 
   $c->respond_to(
     json => {json => {hello => 'world'}},
@@ -443,7 +442,7 @@ with the helpers L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>exception">
 and L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>not_found">.
 
   use Mojolicious::Lite;
-  use Scalar::Util qw(looks_like_number);
+  use Scalar::Util 'looks_like_number';
 
   get '/divide/:dividend/by/:divisor' => sub {
     my $c = shift;
@@ -503,8 +502,7 @@ renderer.
     return unless $template eq 'exception';
 
     # Switch to JSON rendering if content negotiation allows it
-    return unless $c->accepts('json');
-    $args->{json} = {exception => $c->stash('exception')};
+    $args->{json} = {exception => $args->{exception}} if $c->accepts('json');
   };
 
   get '/' => sub { die "This sho...ALL GLORY TO THE HYPNOTOAD!\n" };
@@ -592,15 +590,12 @@ another.
   @@ foo/bar.html.ep
   <!DOCTYPE html>
   <html>
-    %= include '_header', title => 'Howdy'
+    %= include 'header', title => 'Howdy'
     <body>Bar</body>
   </html>
 
-  @@ _header.html.ep
+  @@ header.html.ep
   <head><title><%= $title %></title></head>
-
-You can name partial templates however you like, but a leading underscore is a
-commonly used naming convention.
 
 =head2 Reusable template blocks
 
@@ -801,21 +796,19 @@ parameter.
     </body>
   </html>
 
-The helpers L<Mojolicious::Plugin::DefaultHelpers/"flash"> and
-L<Mojolicious::Plugin::DefaultHelpers/"redirect_to"> are often used together to
-prevent double form submission, allowing users to receive a confirmation message
-that will vanish if they decide to reload the page they've been redirected to.
+The methods L<Mojolicious::Controller/"flash"> and
+L<Mojolicious::Controller/"redirect_to"> are often used together to prevent
+double form submission, allowing users to receive a confirmation message that
+will vanish if they decide to reload the page they've been redirected to.
 
 =head2 Form validation
 
-You can use L<Mojolicious::Plugin::DefaultHelpers/"validation"> to validate
-C<GET> and C<POST> parameters submitted to your application. All unknown fields
-will be ignored by default, so you have to decide which should be
-L<required|Mojolicious::Validator::Validation/"required"> or
-L<optional|Mojolicious::Validator::Validation/"optional"> before you can perform
-checks on their values. Every check is performed right away, so you can use the
-results immediately to build more advanced validation logic with methods like
-L<Mojolicious::Validator::Validation/"is_valid">.
+You can use L<Mojolicious::Controller/"validation"> to validate C<GET> and
+C<POST> parameters submitted to your application. All unknown fields will be
+ignored by default, so you have to decide which should be required or optional
+before you can perform checks on their values. Every check is performed right
+away, so you can use the results immediately to build more advanced validation
+logic with methods like L<Mojolicious::Validator::Validation/"is_valid">.
 
   use Mojolicious::Lite;
 
@@ -823,20 +816,17 @@ L<Mojolicious::Validator::Validation/"is_valid">.
     my $c = shift;
 
     # Check if parameters have been submitted
-    my $v = $c->validation;
-    return $c->render('index') unless $v->has_data;
+    my $validation = $c->validation;
+    return $c->render unless $validation->has_data;
 
     # Validate parameters ("pass_again" depends on "pass")
-    $v->required('user')->size(1, 20)->like(qr/^[a-z0-9]+$/);
-    $v->required('pass_again')->equal_to('pass')
-      if $v->optional('pass')->size(7, 500)->is_valid;
+    $validation->required('user')->size(1, 20)->like(qr/^[e-t]+$/);
+    $validation->required('pass_again')->equal_to('pass')
+      if $validation->optional('pass')->size(7, 500)->is_valid;
 
-    # Check if validation failed
-    return $c->render('index') if $v->has_error;
-
-    # Render confirmation
-    $c->render('thanks');
-  };
+    # Render confirmation if validation was successful
+    $c->render('thanks') unless $validation->has_error;
+  } => 'index';
 
   app->start;
   __DATA__
@@ -852,7 +842,7 @@ L<Mojolicious::Validator::Validation/"is_valid">.
     </head>
     <body>
       %= form_for index => begin
-        %= label_for user => 'Username (required, 1-20 characters, a-z/0-9)'
+        %= label_for user => 'Username (required, 1-20 characters, only e-t)'
         <br>
         %= text_field 'user', id => 'user'
         %= submit_button
@@ -896,7 +886,7 @@ L<Mojolicious::Validator::Validation/"error">.
 
   # Add "range" check
   app->validator->add_check(range => sub {
-    my ($v, $name, $value, $min, $max) = @_;
+    my ($validation, $name, $value, $min, $max) = @_;
     return $value < $min || $value > $max;
   });
 
@@ -906,14 +896,14 @@ L<Mojolicious::Validator::Validation/"error">.
     my $c = shift;
 
     # Validate parameters with custom check
-    my $v = $c->validation;
-    $v->required('number')->range(3, 23);
+    my $validation = $c->validation;
+    $validation->required('number')->range(3, 23);
 
     # Render form again if validation failed
-    return $c->render('form') if $v->has_error;
+    return $c->render('form') if $validation->has_error;
 
     # Prevent double form submission with redirect
-    $c->flash(number => $v->param('number'));
+    $c->flash(number => $validation->param('number'));
     $c->redirect_to('form');
   };
 
@@ -957,13 +947,13 @@ L<Mojolicious::Validator::Validation/"csrf_protect">.
     my $c = shift;
 
     # Check CSRF token
-    my $v = $c->validation;
+    my $validation = $c->validation;
     return $c->render(text => 'Bad CSRF token!', status => 403)
-      if $v->csrf_protect->has_error('csrf_token');
+      if $validation->csrf_protect->has_error('csrf_token');
 
-    my $city = $v->required('city')->param('city');
+    my $city = $validation->required('city')->param('city');
     $c->render(text => "Low orbit ion cannon pointed at $city!")
-      unless $v->has_error;
+      unless $validation->has_error;
   } => 'target';
 
   app->start;
@@ -1044,8 +1034,7 @@ Static files are automatically served from the C<public> directories of the
 application, which can be customized with L<Mojolicious::Static/"paths">, or one
 of the C<DATA> sections from L<Mojolicious::Static/"classes">. And if that's not
 enough you can also serve them manually with
-L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>static"> and
-L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>file">.
+L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>static">.
 
   use Mojolicious::Lite;
 
@@ -1060,11 +1049,6 @@ L<Mojolicious::Plugin::DefaultHelpers/"reply-E<gt>file">.
     $c->reply->static('foo/bar.png');
   };
 
-  get '/leak' => sub {
-    my $c = shift;
-    $c->reply->file('/etc/passwd');
-  };
-
   app->start;
 
 =head2 Custom responses
@@ -1077,7 +1061,6 @@ serve them while allowing content negotiation to be performed with C<Range>,
 C<If-Modified-Since> and C<If-None-Match> headers.
 
   use Mojolicious::Lite;
-  use Mojo::Asset::File;
 
   get '/leak' => sub {
     my $c = shift;
@@ -1092,7 +1075,6 @@ L<Mojolicious::Controller/"rendered"> to tell the renderer when you're done
 generating a response.
 
   use Mojolicious::Lite;
-  use Mojo::Asset::File;
 
   get '/leak' => sub {
     my $c = shift;
@@ -1171,13 +1153,13 @@ when C<register> is called.
   package Mojolicious::Plugin::AlertAssets;
   use Mojo::Base 'Mojolicious::Plugin';
 
-  use Mojo::File qw(curfile);
+  use Mojo::File 'path';
 
   sub register {
     my ($self, $app) = @_;
 
     # Append "templates" and "public" directories
-    my $base = curfile->sibling('AlertAssets');
+    my $base = path(__FILE__)->sibling('AlertAssets');
     push @{$app->renderer->paths}, $base->child('templates')->to_string;
     push @{$app->static->paths},   $base->child('public')->to_string;
   }
@@ -1236,7 +1218,7 @@ L<Mojolicious/"after_dispatch">, for content generated by the renderer it is a
 lot more efficient to use L<Mojolicious/"after_render">.
 
   use Mojolicious::Lite;
-  use IO::Compress::Gzip qw(gzip);
+  use IO::Compress::Gzip 'gzip';
 
   hook after_render => sub {
     my ($c, $output, $format) = @_;
@@ -1265,9 +1247,6 @@ lot more efficient to use L<Mojolicious/"after_render">.
     <head><title><%= title %></title></head>
     <body>Compressed content.</body>
   </html>
-
-If you want to compress all dynamically generated content you can also activate
-L<Mojolicious::Renderer/"compress">.
 
 =head2 Streaming
 
@@ -1303,40 +1282,6 @@ has actually been written.
   HTTP/1.1 200 OK
   Date: Sat, 13 Sep 2014 16:48:29 GMT
   Content-Length: 12
-  Server: Mojolicious (Perl)
-
-  Hello World!
-
-Instead of providing a C<Content-Length> header you can also call
-L<Mojolicious::Controller/"finish"> and close the connection manually once you
-are done.
-
-  use Mojolicious::Lite;
-
-  get '/' => sub {
-    my $c = shift;
-
-    # Prepare body
-    my $body = 'Hello World!';
-
-    # Start writing directly with a drain callback
-    my $drain;
-    $drain = sub {
-      my $c = shift;
-      my $chunk = substr $body, 0, 1, '';
-      length $chunk ? $c->write($chunk, $drain) : $c->finish;
-    };
-    $c->$drain;
-  };
-
-  app->start;
-
-While this is rather inefficient, as it prevents keep-alive, it is sometimes
-necessary for EventSource and similar applications.
-
-  HTTP/1.1 200 OK
-  Date: Sat, 13 Sep 2014 16:48:29 GMT
-  Connection: close
   Server: Mojolicious (Perl)
 
   Hello World!
@@ -1419,10 +1364,9 @@ section of your application, similar to templates.
 
 Templates stored in files get preferred over files from the C<DATA> section,
 this allows you to include a default set of templates in your application that
-the user can later customize. The command
-L<Mojolicious::Command::Author::inflate> will write all templates and static
-files from the C<DATA> section into actual files in the C<templates> and
-C<public> directories.
+the user can later customize. The command L<Mojolicious::Command::inflate> will
+write all templates and static files from the C<DATA> section into actual files
+in the C<templates> and C<public> directories.
 
   $ ./myapp.pl inflate
 
@@ -1518,7 +1462,7 @@ need to be automatically encoded, but this can be easily disabled if you're
 generating bytes instead.
 
   use Mojolicious::Lite;
-  use Storable qw(nfreeze);
+  use Storable 'nfreeze';
 
   # Add "storable" handler
   app->renderer->add_handler(storable => sub {
@@ -1555,15 +1499,15 @@ explicitly.
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

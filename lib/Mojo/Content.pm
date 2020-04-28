@@ -1,12 +1,12 @@
 package Mojo::Content;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp qw(croak);
+use Carp 'croak';
 use Compress::Raw::Zlib qw(WANT_GZIP Z_STREAM_END);
 use Mojo::Headers;
-use Scalar::Util qw(looks_like_number);
+use Scalar::Util 'looks_like_number';
 
-has [qw(auto_decompress auto_relax relaxed skip_body)];
+has [qw(auto_decompress auto_relax expect_close relaxed skip_body)];
 has headers           => sub { Mojo::Headers->new };
 has max_buffer_size   => sub { $ENV{MOJO_MAX_BUFFER_SIZE} || 262144 };
 has max_leftover_size => sub { $ENV{MOJO_MAX_LEFTOVER_SIZE} || 262144 };
@@ -39,11 +39,12 @@ sub generate_body_chunk {
   my ($self, $offset) = @_;
 
   $self->emit(drain => $offset) unless length($self->{body_buffer} //= '');
-  return delete $self->{body_buffer} if length $self->{body_buffer};
-  return ''                          if $self->{eof};
-
   my $len = $self->headers->content_length;
-  return looks_like_number $len && $len == $offset ? '' : undef;
+  return '' if looks_like_number $len && $len == $offset;
+  my $chunk = delete $self->{body_buffer};
+  return $self->{eof} ? '' : undef unless length $chunk;
+
+  return $chunk;
 }
 
 sub get_body_chunk {
@@ -103,10 +104,11 @@ sub parse {
 
   # Relaxed parsing
   my $headers = $self->headers;
-  my $len     = $headers->content_length // '';
+  my $len = $headers->content_length // '';
   if ($self->auto_relax && !length $len) {
     my $connection = lc($headers->connection // '');
-    $self->relaxed(1) if $connection eq 'close' || !$connection;
+    $self->relaxed(1)
+      if $connection eq 'close' || (!$connection && $self->expect_close);
   }
 
   # Chunked or relaxed content
@@ -120,7 +122,7 @@ sub parse {
   # Normal content
   $len = 0 unless looks_like_number $len;
   if ((my $need = $len - ($self->{size} ||= 0)) > 0) {
-    my $len   = length $self->{buffer};
+    my $len = length $self->{buffer};
     my $chunk = substr $self->{buffer}, 0, $need > $len ? $len : $need, '';
     $self->_decompress($chunk);
     $self->{size} += length $chunk;
@@ -156,14 +158,9 @@ sub write {
 
 sub write_chunk {
   my ($self, $chunk, $cb) = @_;
-
-  $self->headers->transfer_encoding('chunked') unless $self->{chunked};
-  @{$self}{qw(chunked dynamic)} = (1, 1);
-
-  $self->{body_buffer} .= $self->_build_chunk($chunk) if defined $chunk;
-  $self->once(drain => $cb) if $cb;
+  $self->headers->transfer_encoding('chunked') unless $self->is_chunked;
+  $self->write(defined $chunk ? $self->_build_chunk($chunk) : $chunk, $cb);
   $self->{eof} = 1 if defined $chunk && !length $chunk;
-
   return $self;
 }
 
@@ -276,7 +273,7 @@ sub _parse_until_body {
   $self->{raw_size} += length($chunk //= '');
   $self->{pre_buffer} .= $chunk;
   $self->_parse_headers if ($self->{state} ||= 'headers') eq 'headers';
-  $self->emit('body')   if $self->{state} ne 'headers' && !$self->{body}++;
+  $self->emit('body') if $self->{state} ne 'headers' && !$self->{body}++;
 }
 
 1;
@@ -345,7 +342,7 @@ Emitted once all data has been written.
 
 Emitted when a new chunk of content arrives.
 
-  $content->on(read => sub {
+  $content->unsubscribe('read')->on(read => sub {
     my ($content, $bytes) = @_;
     say "Streaming: $bytes";
   });
@@ -368,6 +365,13 @@ Decompress content automatically if L</"is_compressed"> is true.
 
 Try to detect when relaxed parsing is necessary.
 
+=head2 expect_close
+
+  my $bool = $content->expect_close;
+  $content = $content->expect_close($bool);
+
+Expect a response that is terminated with a connection close.
+
 =head2 headers
 
   my $headers = $content->headers;
@@ -381,7 +385,7 @@ Content headers, defaults to a L<Mojo::Headers> object.
   $content = $content->max_buffer_size(1024);
 
 Maximum size in bytes of buffer for content parser, defaults to the value of
-the C<MOJO_MAX_BUFFER_SIZE> environment variable or C<262144> (256KiB).
+the C<MOJO_MAX_BUFFER_SIZE> environment variable or C<262144> (256KB).
 
 =head2 max_leftover_size
 
@@ -390,7 +394,7 @@ the C<MOJO_MAX_BUFFER_SIZE> environment variable or C<262144> (256KiB).
 
 Maximum size in bytes of buffer for pipelined HTTP requests, defaults to the
 value of the C<MOJO_MAX_LEFTOVER_SIZE> environment variable or C<262144>
-(256KiB).
+(256KB).
 
 =head2 relaxed
 
@@ -441,8 +445,7 @@ Extract charset from C<Content-Type> header.
 
   my $clone = $content->clone;
 
-Return a new L<Mojo::Content> object cloned from this content if possible,
-otherwise return C<undef>.
+Clone content if possible, otherwise return C<undef>.
 
 =head2 generate_body_chunk
 
@@ -590,6 +593,6 @@ time to end the stream.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

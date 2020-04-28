@@ -5,14 +5,14 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Test::More;
 use Mojo::IOLoop::TLS;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 plan skip_all => 'set TEST_IPV6 to enable this test (developer only!)'
-  unless $ENV{TEST_IPV6} || $ENV{TEST_ALL};
+  unless $ENV{TEST_IPV6};
 plan skip_all => 'set TEST_TLS to enable this test (developer only!)'
-  unless $ENV{TEST_TLS} || $ENV{TEST_ALL};
-plan skip_all => 'IO::Socket::SSL 2.009+ required for this test!'
+  unless $ENV{TEST_TLS};
+plan skip_all => 'IO::Socket::SSL 1.94+ required for this test!'
   unless Mojo::IOLoop::TLS->can_tls;
 
 # To regenerate all required certificates run these commands (07.01.2016)
@@ -38,8 +38,8 @@ my $daemon = Mojo::Server::Daemon->new(
   silent => 1
 );
 my $port = $daemon->start->ports->[0];
-my $ua = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton, insecure => 1);
-my $tx = $ua->get("https://[::1]:$port/");
+my $ua   = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton);
+my $tx   = $ua->get("https://[::1]:$port/");
 is $tx->res->code, 200,      'right status';
 is $tx->res->body, 'works!', 'right content';
 
@@ -55,7 +55,7 @@ SKIP: {
     . '&example.com_cert=t/mojo/certs/domain.crt'
     . '&example.com_key=t/mojo/certs/domain.key';
   my $forward = $daemon->listen([$listen])->start->ports->[0];
-  my $id      = Mojo::TestConnectProxy::proxy({address => '[::1]'},
+  my $id = Mojo::TestConnectProxy::proxy({address => '[::1]'},
     {address => '[::1]', port => $forward});
   my $proxy = Mojo::IOLoop->acceptor($id)->port;
   $ua = Mojo::UserAgent->new(

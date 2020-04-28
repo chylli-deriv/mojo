@@ -34,7 +34,7 @@ sub to_psgi_app {
   my $self = shift;
 
   # Preload application and wrap it
-  $self->app->server($self);
+  $self->app;
   return sub { $self->run(@_) }
 }
 
@@ -121,10 +121,10 @@ Run L<PSGI>.
 
   my $app = $psgi->to_psgi_app;
 
-Turn L<Mojolicious> application into L<PSGI> application.
+Turn L<Mojo> application into L<PSGI> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

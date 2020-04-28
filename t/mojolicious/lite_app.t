@@ -5,13 +5,12 @@ BEGIN {
   $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll';
 }
 
-use Test::Mojo;
 use Test::More;
-use Mojo::ByteStream qw(b);
+use Mojo::ByteStream 'b';
 use Mojo::Cookie::Response;
 use Mojo::IOLoop;
 use Mojolicious::Lite;
-use Time::HiRes qw(usleep);
+use Test::Mojo;
 
 # Missing plugin
 eval { plugin 'does_not_exist' };
@@ -22,9 +21,8 @@ is $@, qq{Plugin "does_not_exist" missing, maybe you need to install it?\n},
 app->defaults(default => 23);
 
 # Secret
-app->log->level('debug')->unsubscribe('message');
 my $log = '';
-my $cb  = app->log->on(message => sub { $log .= pop });
+my $cb = app->log->on(message => sub { $log .= pop });
 is app->secrets->[0], app->moniker, 'secret defaults to moniker';
 like $log, qr/Your secret passphrase needs to be changed/, 'right message';
 app->log->unsubscribe(message => $cb);
@@ -47,13 +45,6 @@ is app->build_controller->test->helper, 'Mojolicious::Controller',
 
 # Test renderer
 app->renderer->add_handler(dead => sub { die 'renderer works!' });
-app->renderer->add_handler(
-  change_status => sub {
-    my ($renderer, $c, $output, $options) = @_;
-    $c->stash(status => 500);
-    $$output = "Bad\n";
-  }
-);
 
 # Rewrite when rendering to string
 hook before_render => sub {
@@ -163,13 +154,6 @@ get '/dead_renderer' => sub { shift->render(handler => 'dead') };
 
 get '/dead_auto_renderer' => {handler => 'dead'};
 
-get '/handler_change_status' =>
-  sub { shift->render(handler => 'change_status', status => 200) };
-
-get '/template_change_status' => sub {
-  shift->render(inline => 'Bad<% stash status => 500; %>', status => 200);
-};
-
 get '/regex/in/template' => 'test(test)(\Qtest\E)(';
 
 get '/maybe/ajax' => sub {
@@ -187,7 +171,7 @@ get '/stream' => sub {
   my $cb;
   $cb = sub {
     my $content = shift;
-    my $chunk   = shift @$chunks || '';
+    my $chunk = shift @$chunks || '';
     $content->write_chunk($chunk, $chunk ? $cb : undef);
   };
   $c->res->content->$cb;
@@ -243,7 +227,7 @@ get '/to_string' => sub {
 };
 
 get '/source' => sub {
-  my $c    = shift;
+  my $c = shift;
   my $file = $c->param('fail') ? 'does_not_exist.txt' : '../lite_app.t';
   $c->render_maybe('this_does_not_ever_exist')
     or $c->reply->static($file)
@@ -255,7 +239,7 @@ get '/foo_relaxed/#test' => sub {
   $c->render(text => $c->stash('test') . ($c->req->headers->dnt ? 1 : 0));
 };
 
-get '/foo_wildcard/<*test>' => sub {
+get '/foo_wildcard/(*test)' => sub {
   my $c = shift;
   $c->render(text => $c->stash('test'));
 };
@@ -278,11 +262,13 @@ post '/with/header/condition' => sub {
 get '/session_cookie' => sub {
   my $c = shift;
   $c->render(text => 'Cookie set!');
-  $c->res->cookies(Mojo::Cookie::Response->new(
-    path  => '/session_cookie',
-    name  => 'session',
-    value => '23'
-  ));
+  $c->res->cookies(
+    Mojo::Cookie::Response->new(
+      path  => '/session_cookie',
+      name  => 'session',
+      value => '23'
+    )
+  );
 };
 
 get '/session_cookie/2' => sub {
@@ -358,7 +344,7 @@ get '/eperror' => sub { shift->render(handler => 'ep') } => 'eperror';
 
 get '/subrequest' => sub {
   my $c = shift;
-  $c->render(text => $c->ua->post('/template')->result->body);
+  $c->render(text => $c->ua->post('/template')->success->body);
 };
 
 # Make sure hook runs non-blocking
@@ -387,11 +373,13 @@ get '/redirect_twice' => sub { shift->redirect_to('/redirect_named') };
 
 get '/redirect_callback' => sub {
   my $c = shift;
-  Mojo::IOLoop->next_tick(sub {
-    $c->res->code(301);
-    $c->res->body('Whatever!');
-    $c->redirect_to('http://127.0.0.1/foo');
-  });
+  Mojo::IOLoop->next_tick(
+    sub {
+      $c->res->code(301);
+      $c->res->body('Whatever!');
+      $c->redirect_to('http://127.0.0.1/foo');
+    }
+  );
 };
 
 get '/static' => sub { shift->reply->static('hello.txt') };
@@ -425,16 +413,6 @@ get '/default/:text' => (default => 23) => sub {
   $c->render(text => "works $default $test");
 };
 
-get '/foo/<bar:num>/baz' => sub {
-  my $c = shift;
-  $c->render(text => $c->param('bar'));
-};
-
-# Custom placeholder type
-app->routes->add_type(my_num => qr/[5-9]+/);
-
-get '/type/<test:my_num>' => {inline => '%= $test'};
-
 # Redirect condition
 app->routes->add_condition(
   redirect => sub {
@@ -466,26 +444,11 @@ get '/dynamic/inline' => sub {
   $c->render(inline => 'dynamic inline ' . $dynamic_inline++);
 };
 
-get '/timing' => sub {
-  my $c = shift;
-  $c->timing->begin('foo');
-  $c->timing->begin('bar');
-  usleep 1000;
-  my $foo = $c->timing->elapsed('foo');
-  my $bar = $c->timing->elapsed('bar');
-  $c->timing->server_timing('miss');
-  $c->timing->server_timing('dc',   'atl');
-  $c->timing->server_timing('test', 'Some Test', '0.002');
-  $c->timing->server_timing('app',  undef, '0.001');
-  my $rps = $c->timing->rps($bar);
-  $c->render(text => "Foo: $foo, Bar: $bar ($rps)");
-};
-
 my $t = Test::Mojo->new;
 
 # Application is already available
 is $t->app->test_helper2, 'Mojolicious::Controller', 'right class';
-is $t->app->moniker,      'lite_app',                'right moniker';
+is $t->app->moniker, 'lite_app', 'right moniker';
 is $t->app->stash->{default}, 23, 'right value';
 is $t->app, app->build_controller->app->commands->app, 'applications are equal';
 is $t->app->build_controller->req->url, '', 'no URL';
@@ -644,7 +607,7 @@ $t->get_ok('/static.txt')->status_is(200)
 
 # Partial inline file
 $t->get_ok('/static.txt' => {Range => 'bytes=2-5'})->status_is(206)
-  ->header_is(Server          => 'Mojolicious (Perl)')
+  ->header_is(Server => 'Mojolicious (Perl)')
   ->header_is('Accept-Ranges' => 'bytes')->header_is('Content-Length' => 4)
   ->content_is('st s');
 
@@ -678,12 +641,6 @@ $t->get_ok('/dead_auto_renderer')->status_is(500)
 # Dead template
 $t->get_ok('/dead_template')->status_is(500)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/works too!/);
-
-# Handler that changes status
-$t->get_ok('/handler_change_status')->status_is(500)->content_is("Bad\n");
-
-# Template that changes status
-$t->get_ok('/template_change_status')->status_is(500)->content_is("Bad\n");
 
 # Regex in name
 $t->get_ok('/regex/in/template')->status_is(200)
@@ -726,10 +683,7 @@ $t->get_ok('/root.txt')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('root fallback!');
 
 # Root with format
-$t->get_ok('/.html')->status_is(200)->header_exists_not('Servers')
-  ->header_exists_not('Servers', 'the header is missing')
-  ->header_exists('Server')->header_exists('Server', 'the header exists')
-  ->header_is(Server => 'Mojolicious (Perl)')
+$t->get_ok('/.html')->status_is(200)->header_is(Server => 'Mojolicious (Perl)')
   ->content_is("/root.html\n/root.html\n/root.html\n/root.html\n/root.html\n");
 
 # Reverse proxy with "X-Forwarded-For"
@@ -779,12 +733,12 @@ $t->get_ok('/to_string')->status_is(200)->content_is('beforeafter');
 
 # Render static file outside of public directory
 $t->get_ok('/source')->status_is(200)
-  ->content_type_is('application/octet-stream')->header_isnt('X-Missing' => 1)
+  ->content_type_is('text/plain;charset=UTF-8')->header_isnt('X-Missing' => 1)
   ->content_like(qr!get_ok\('/source!);
 
 # File does not exist
 $log = '';
-$cb  = $t->app->log->on(message => sub { $log .= pop });
+$cb = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/source?fail=1')->status_is(404)->header_is('X-Missing' => 1)
   ->content_is("Oops!\n");
 like $log, qr/Static file "does_not_exist.txt" not found/, 'right message';
@@ -793,14 +747,10 @@ $t->app->log->unsubscribe(message => $cb);
 # With body and max message size
 {
   local $ENV{MOJO_MAX_MESSAGE_SIZE} = 1024;
-  $log = '';
-  $cb  = $t->app->log->on(message => sub { $log .= pop });
   $t->get_ok('/', '1234' x 1024)->status_is(200)
     ->header_is(Connection => 'close')
     ->content_is("Maximum message size exceeded\n"
       . "/root.html\n/root.html\n/root.html\n/root.html\n/root.html\n");
-  like $log, qr/Maximum message size exceeded/, 'right message';
-  $t->app->log->unsubscribe(message => $cb);
 }
 
 # Relaxed placeholder
@@ -1036,18 +986,6 @@ $t->get_ok('/default/condition')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')
   ->content_is('works 23 condition23 works!');
 
-# Placeholder type
-$t->get_ok('/foo/23/baz')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is('23');
-$t->get_ok('/foo/bar/baz')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)');
-
-# Custom placeholder type
-$t->get_ok('/type/56')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is("56\n");
-$t->get_ok('/type/12')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)');
-
 # Redirect from condition
 $t->get_ok('/redirect/condition/0')->status_is(200)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('condition works!');
@@ -1085,16 +1023,6 @@ $t->get_ok('/url_with/foo?foo=bar')->status_is(200)
 # Dynamic inline template
 $t->get_ok('/dynamic/inline')->status_is(200)->content_is("dynamic inline 1\n");
 $t->get_ok('/dynamic/inline')->status_is(200)->content_is("dynamic inline 2\n");
-
-# Timing
-$t->get_ok('/timing')->status_is(200)
-  ->header_like('Server-Timing' =>
-    qr/miss, dc;desc="atl", test;desc="Some Test";dur=0.002, app;dur=0.001/)
-  ->content_like(qr/Foo: [0-9.]+, Bar: [0-9.]+ \([0-9.?]+\)/);
-is $t->app->timing->elapsed('does_not_exist'), undef,    'no timing data';
-is $t->app->timing->rps('0.1'),                '10.000', 'right number';
-is $t->app->timing->rps(1),                    '1.000',  'right number';
-is $t->app->timing->rps(0),                    undef,    'number too small';
 
 done_testing();
 
@@ -1190,10 +1118,10 @@ Yea baby!\
 Not a favicon!
 
 @@ 0.html.ep
-%== url_with->query({foo => 'bar'})
+%== url_with->query([foo => 'bar'])
 %== url_with('http://mojolicious.org/test')
-%== url_with('/test')->query({foo => undef})
-%== url_with('bartest', test => 23)->query({foo => 'yada'})
+%== url_with('/test')->query([foo => undef])
+%== url_with('bartest', test => 23)->query([foo => 'yada'])
 
 __END__
 This is not a template!

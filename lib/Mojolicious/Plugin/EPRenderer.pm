@@ -99,7 +99,7 @@ Handler name, defaults to C<ep>.
   # Mojolicious::Lite
   plugin EPRenderer => {template => {line_start => '.'}};
 
-Attribute values passed to L<Mojo::Template> objects used to render templates.
+Attribute values passed to L<Mojo::Template> object used to render templates.
 
 =head1 METHODS
 
@@ -115,6 +115,6 @@ Register renderer in L<Mojolicious> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

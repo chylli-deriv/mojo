@@ -20,23 +20,19 @@ app->log->on(message => sub { shift; $log .= join ':', @_ });
 
 helper dead_helper => sub { die "dead helper!\n" };
 
-app->renderer->add_handler(dead => sub { die "dead handler!\n" });
-
 # Custom rendering for missing "txt" template
 hook before_render => sub {
   my ($c, $args) = @_;
   return unless ($args->{template} // '') eq 'not_found';
-  my $stash     = $c->stash;
-  my $exception = $stash->{snapshot}{exception};
+  my $exception = $args->{snapshot}{exception};
   $args->{text} = "Missing template, $exception." if $args->{format} eq 'txt';
 };
 
 # Custom exception rendering for "txt"
 hook before_render => sub {
   my ($c, $args) = @_;
-  return unless ($args->{template} // '') eq 'exception';
-  return unless $c->accepts('', 'txt');
-  @$args{qw(text format)} = ($c->stash->{exception}, 'txt');
+  @$args{qw(text format)} = ($args->{exception}, 'txt')
+    if ($args->{template} // '') eq 'exception' && $c->accepts('txt');
 };
 
 get '/logger' => sub {
@@ -50,14 +46,6 @@ get '/logger' => sub {
 get '/custom_exception' => sub { die Mojo::Base->new };
 
 get '/dead_template';
-
-get '/dead_template_too';
-
-get '/dead_handler' => {handler => 'dead'};
-
-get '/dead_action_epl' => {handler => 'epl'} => sub {
-  die "dead action epl!\n";
-};
 
 get '/dead_included_template';
 
@@ -113,7 +101,7 @@ hook after_dispatch => sub {
 hook around_dispatch => sub {
   my ($next, $c) = @_;
   unless (eval { $next->(); 1 }) {
-    die $@ unless $@ =~ /^CUSTOM\n/;
+    die $@ unless $@ eq "CUSTOM\n";
     $c->render(text => 'Custom handling works!');
   }
 };
@@ -125,17 +113,6 @@ get '/custom' => sub { die "CUSTOM\n" };
 get '/dead_helper';
 
 my $t = Test::Mojo->new;
-
-# Missing error
-my $c = $t->app->build_controller;
-$c->reply->exception(undef);
-like $c->res->body, qr/Exception!/, 'right result';
-$c = $t->app->build_controller;
-$c->reply->exception;
-like $c->res->body, qr/Exception!/, 'right result';
-$c = $t->app->build_controller;
-$c->reply->exception(Mojo::Exception->new);
-like $c->res->body, qr/Exception!/, 'right result';
 
 # Debug
 $t->get_ok('/logger?level=debug&message=one')->status_is(200)
@@ -178,21 +155,6 @@ $t->get_ok('/dead_template')->status_is(500)->content_like(qr/dead template!/)
   ->content_like(qr/line 1/);
 like $log, qr/dead template!/, 'right result';
 
-# Dead template with a different handler
-$t->get_ok('/dead_template_too.xml')->status_is(500)
-  ->content_is("<very>bad</very>\n");
-like $log, qr/dead template too!/, 'right result';
-
-# Dead handler
-$t->get_ok('/dead_handler.xml')->status_is(500)
-  ->content_is("<very>bad</very>\n");
-like $log, qr/dead handler!/, 'right result';
-
-# Dead action (with a different handler)
-$t->get_ok('/dead_action_epl.xml')->status_is(500)
-  ->content_is("<very>bad</very>\n");
-like $log, qr/dead action epl!/, 'right result';
-
 # Dead included template
 $t->get_ok('/dead_included_template')->status_is(500)
   ->content_like(qr/dead template!/)->content_like(qr/line 1/);
@@ -222,13 +184,11 @@ $t->get_ok('/dead_action.json')->status_is(500)
 
 # Dead action with custom exception rendering
 $t->get_ok('/dead_action' => {Accept => 'text/plain'})->status_is(500)
-  ->content_type_is('text/plain;charset=UTF-8')
-  ->content_like(qr/^dead action!\n/);
+  ->content_type_is('text/plain;charset=UTF-8')->content_is("dead action!\n");
 
 # Action dies twice
 $t->get_ok('/double_dead_action_☃')->status_is(500)
-  ->content_like(qr!get &#39;/double_dead_action_☃&#39;!)
-  ->content_like(qr/File.+lite_app\.t\", line \d/)
+  ->content_like(qr!get &#39;/double_dead_action_☃&#39;.*lite_app\.t:\d!s)
   ->content_like(qr/double dead action!/);
 
 # Trapped exception
@@ -290,16 +250,13 @@ $t->get_ok('/mojo/prettify/run_prettify.js')->status_is(200)
   ->content_type_is('application/javascript');
 $t->get_ok('/mojo/prettify/prettify-mojo-dark.css')->status_is(200)
   ->content_type_is('text/css');
+$t->get_ok('/mojo/prettify/prettify-mojo-light.css')->status_is(200)
+  ->content_type_is('text/css');
 $t->get_ok('/mojo/failraptor.png')->status_is(200)
   ->content_type_is('image/png');
-$t->get_ok('/mojo/logo.png')->status_is(200)->content_type_is('image/png');
 $t->get_ok('/mojo/logo-black.png')->status_is(200)
   ->content_type_is('image/png');
-$t->get_ok('/mojo/logo-black-2x.png')->status_is(200)
-  ->content_type_is('image/png');
 $t->get_ok('/mojo/logo-white.png')->status_is(200)
-  ->content_type_is('image/png');
-$t->get_ok('/mojo/logo-white-2x.png')->status_is(200)
   ->content_type_is('image/png');
 $t->get_ok('/mojo/noraptor.png')->status_is(200)->content_type_is('image/png');
 $t->get_ok('/mojo/notfound.png')->status_is(200)->content_type_is('image/png');
@@ -307,6 +264,7 @@ $t->get_ok('/mojo/pinstripe-dark.png')->status_is(200)
   ->content_type_is('image/png');
 $t->get_ok('/mojo/pinstripe-light.png')->status_is(200)
   ->content_type_is('image/png');
+$t->get_ok('/mojo/stripes.png')->status_is(200)->content_type_is('image/png');
 
 done_testing();
 
@@ -316,9 +274,6 @@ Green<%= content %>
 
 @@ dead_template.html.ep
 % die 'dead template!';
-
-@@ dead_template_too.xml.epl
-% die 'dead template too!';
 
 @@ dead_included_template.html.ep
 this

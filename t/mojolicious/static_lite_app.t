@@ -2,14 +2,11 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
-use Test::Mojo;
 use Test::More;
 use Mojo::Asset::Memory;
 use Mojo::Date;
-use Mojo::File qw(curfile);
 use Mojolicious::Lite;
-
-hook after_static => sub { shift->app->log->debug('Static file served') };
+use Test::Mojo;
 
 get '/hello3.txt' => sub { shift->reply->static('hello2.txt') };
 
@@ -28,53 +25,25 @@ get '/etag' => sub {
     : $c->render(text => 'I ♥ Mojolicious!');
 };
 
-get '/etag_weak' => sub {
-  my $c = shift;
-  $c->is_fresh(etag => 'W/"abc"')
-    ? $c->rendered(304)
-    : $c->render(text => 'I ♥ Mojolicious!');
-};
-
 get '/asset' => sub {
   my $c   = shift;
   my $mem = Mojo::Asset::Memory->new->add_chunk('I <3 Assets!');
   $c->reply->asset($mem);
 };
 
-get '/file' => sub {
-  my $c = shift;
-  $c->reply->file(curfile->sibling('templates2', '42.html.ep'));
-};
-
 my $t = Test::Mojo->new;
 
-# Freshness (Etag)
+# Freshness
 my $c = $t->app->build_controller;
 ok !$c->is_fresh, 'content is stale';
 $c->res->headers->etag('"abc"');
 $c->req->headers->if_none_match('"abc"');
-ok $c->is_fresh, 'content is fresh (strong If-None-Match + strong ETag)';
-$c->res->headers->etag('W/"abc"');
-ok $c->is_fresh, 'content is fresh (strong If-None-Match + weak ETag)';
-$c->req->headers->if_none_match('W/"abc"');
-ok $c->is_fresh, 'content is fresh (weak If-None-Match + weak ETag)';
-$c->res->headers->etag('"abc"');
-ok !$c->is_fresh, 'content is not fresh (weak If-None-Match + strong ETag)';
-$c->res->headers->etag('"abc"');
-$c->req->headers->if_none_match('"fooie"', 'W/"abc"');
-ok !$c->is_fresh, 'content is not fresh (multiple If-None-Match + strong ETag)';
-$c->res->headers->etag('W/"abc"');
-$c->req->headers->if_none_match('W/"fooie"', '"abc"');
-ok $c->is_fresh, 'content is fresh (multiple If-None-Match + weak ETag)';
-
-# Freshness (Last-Modified)
+ok $c->is_fresh, 'content is fresh';
 $c = $t->app->build_controller;
 my $date = Mojo::Date->new(23);
 $c->res->headers->last_modified($date);
 $c->req->headers->if_modified_since($date);
 ok $c->is_fresh, 'content is fresh';
-
-# Freshness (Etag and Last-Modified)
 $c = $t->app->build_controller;
 $c->req->headers->if_none_match('"abc"');
 $c->req->headers->if_modified_since($date);
@@ -82,41 +51,20 @@ ok $c->is_fresh(etag => 'abc', last_modified => $date->epoch),
   'content is fresh';
 is $c->res->headers->etag,          '"abc"', 'right "ETag" value';
 is $c->res->headers->last_modified, "$date", 'right "Last-Modified" value';
-
 $c = $t->app->build_controller;
 ok !$c->is_fresh(last_modified => $date->epoch), 'content is stale';
 is $c->res->headers->etag,          undef,   'no "ETag" value';
 is $c->res->headers->last_modified, "$date", 'right "Last-Modified" value';
 
-# Freshness (multiple Etag values)
-$c = $t->app->build_controller;
-$c->req->headers->if_none_match('"cba", "abc"');
-ok $c->is_fresh(etag => 'abc'), 'content is fresh';
-$c = $t->app->build_controller;
-$c->req->headers->if_none_match('"abc", "cba"');
-ok $c->is_fresh(etag => 'abc'), 'content is fresh';
-$c = $t->app->build_controller;
-$c->req->headers->if_none_match(' "xyz" , "abc","cba" ');
-ok $c->is_fresh(etag => 'abc'), 'content is fresh';
-$c = $t->app->build_controller;
-$c->req->headers->if_none_match('"cba", "abc"');
-ok !$c->is_fresh(etag => 'cab'), 'content is stale';
-
 # Static file
-$t->app->log->level('debug')->unsubscribe('message');
-my $log = '';
-my $cb  = $t->app->log->on(message => sub { $log .= pop });
 $t->get_ok('/hello.txt')->status_is(200)
-  ->header_is(Server          => 'Mojolicious (Perl)')
+  ->header_is(Server => 'Mojolicious (Perl)')
   ->header_is('Accept-Ranges' => 'bytes')->header_is('Content-Length' => 31)
   ->content_is("Hello Mojo from a static file!\n");
-like $log,   qr/Static file served/, 'right message';
-unlike $log, qr/200 OK/,             'no status message';
-$t->app->log->unsubscribe(message => $cb);
 
 # Static file (HEAD)
 $t->head_ok('/hello.txt')->status_is(200)
-  ->header_is(Server          => 'Mojolicious (Perl)')
+  ->header_is(Server => 'Mojolicious (Perl)')
   ->header_is('Accept-Ranges' => 'bytes')->header_is('Content-Length' => 31)
   ->content_is('');
 
@@ -184,7 +132,7 @@ $t->get_ok('/hello.txt' => {Range => 'bytes=32-33'})->status_is(416)
 
 # Render single byte static file
 $t->get_ok('/hello3.txt')->status_is(200)
-  ->header_is(Server          => 'Mojolicious (Perl)')
+  ->header_is(Server => 'Mojolicious (Perl)')
   ->header_is('Accept-Ranges' => 'bytes')->header_is('Content-Length' => 1)
   ->content_is('X');
 
@@ -202,22 +150,10 @@ $t->post_ok('/hello4.txt')->status_is(200)
 # Fresh content
 $t->get_ok('/etag')->status_is(200)->header_is(Server => 'Mojolicious (Perl)')
   ->header_is(ETag => '"abc"')->content_is('I ♥ Mojolicious!');
-$t->get_ok('/etag_weak')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->header_is(ETag => 'W/"abc"')
-  ->content_is('I ♥ Mojolicious!');
-$t->get_ok('/etag' => {'If-None-Match' => 'W/"abc"'})->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->header_is(ETag => '"abc"')
-  ->content_is('I ♥ Mojolicious!');
 
 # Stale content
 $t->get_ok('/etag' => {'If-None-Match' => '"abc"'})->status_is(304)
   ->header_is(Server => 'Mojolicious (Perl)')->header_is(ETag => '"abc"')
-  ->content_is('');
-$t->get_ok('/etag_weak' => {'If-None-Match' => '"abc"'})->status_is(304)
-  ->header_is(Server => 'Mojolicious (Perl)')->header_is(ETag => 'W/"abc"')
-  ->content_is('');
-$t->get_ok('/etag_weak' => {'If-None-Match' => 'W/"abc"'})->status_is(304)
-  ->header_is(Server => 'Mojolicious (Perl)')->header_is(ETag => 'W/"abc"')
   ->content_is('');
 
 # Fresh asset
@@ -232,11 +168,6 @@ $t->get_ok('/asset' => {'If-None-Match' => $etag})->status_is(304)
 # Partial asset
 $t->get_ok('/asset' => {'Range' => 'bytes=3-5'})->status_is(206)
   ->header_is(Server => 'Mojolicious (Perl)')->content_is('3 A');
-
-# File
-$t->get_ok('/file' => {'Range' => 'bytes=4-9'})->status_is(206)
-  ->content_type_is('application/octet-stream')
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is('answer');
 
 # Empty file
 $t->get_ok('/hello4.txt')->status_is(200)
@@ -285,10 +216,6 @@ $t->get_ok('/static.txt' => {Range => 'bytes=45-50'})->status_is(416)
   ->header_is(Server          => 'Mojolicious (Perl)')
   ->header_is('Accept-Ranges' => 'bytes')->content_is('');
 
-# UTF-8 encoded inline file
-$t->get_ok('/static_utf8.txt')->status_is(200)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_is("I ♥ Unicode\n");
-
 done_testing();
 
 __DATA__
@@ -297,6 +224,3 @@ Unreachable file.
 
 @@ static.txt (base64)
 dGVzdCAxMjMKbGFsYWxh
-
-@@ static_utf8.txt
-I ♥ Unicode

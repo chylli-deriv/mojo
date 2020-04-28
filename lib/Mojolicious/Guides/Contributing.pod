@@ -12,8 +12,8 @@ few of them.
 
 =head1 REPORTING BUGS
 
-We use the L<GitHub issue tracker|https://github.com/mojolicious/mojo/issues>, 
-so you'll need to create a (free) GitHub account to be able to submit issues,
+We use the L<GitHub issue tracker|https://github.com/kraih/mojo/issues>, so
+you'll need to create a (free) GitHub account to be able to submit issues,
 comments and pull requests.
 
 First of all, make sure you are using the latest version of L<Mojolicious>, it
@@ -36,14 +36,14 @@ activity it will get reopened just as quickly.
 
 =head2 Reporting security issues
 
-Please report security issues directly to Sebastian Riedel
-(C<kraih@mojolicious.org>), and give us a few days to develop and release a
-proper fix.
+Please report security issues directly to the pumpkin-holder via email, which is
+currently Sebastian Riedel (C<sri@cpan.org>), and give us a few days to develop
+and release a proper fix.
 
 =head1 RESOLVING ISSUES
 
 There are many ways in which you can help us resolve existing issues on the
-L<GitHub issue tracker|https://github.com/mojolicious/mojo/issues>.
+L<GitHub issue tracker|https://github.com/kraih/mojo/issues>.
 
 Can you replicate the problem on your computer? Add a comment saying that
 you're seeing the same. Perhaps you can provide additional information that
@@ -60,7 +60,7 @@ One of the easiest ways to contribute to L<Mojolicious> is through
 documentation improvements. While the L<Mojolicious::Guides> are carefully
 curated by the core team, everybody with a (free) GitHub account can make
 changes and add new information to the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>.
 
 Pull requests with additions or changes to the documentation included in the
 L<Mojolicious> distribution follow the same rules as code contributions. Please
@@ -71,26 +71,20 @@ a comma or semicolon.
 
 All code contributions should be sent as
 L<GitHub pull requests|https://help.github.com/articles/using-pull-requests>.
-But please try to avoid pull requests with very simplistic changes, such as a
-single typo fix somewhere in the documentation or comments.
 
 An expressive title and detailed description are invaluable during the review
 process, which usually ends when members of the community have voiced their
-opinions and the core team voted for or against a change. To reach the formal
-voting stage, a member of the core team needs to call for a vote. You are
-responsible for securing this vote call as well as the required votes. The exact
-L</"Voting Rules"> can be found below.
-
-All code changes should emulate the style of the surrounding code, include tests
-that fail without them, and update relevant documentation.
+opinions and the core team voted for or against a change. All code changes
+should emulate the style of the surrounding code, include tests that fail
+without them, and update relevant documentation.
 
 While the L<Mojolicious> distribution covers a wide range of features, we are
 rather conservative when it comes to adding new ones. So if your contribution
-is not a simple bug fix, it is B<strongly recommended> that you discuss it in
-advance on the L<mailing list|http://groups.google.com/group/mojolicious> or the
-official IRC channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>),
-to avoid unnecessary work and to increase its chances of getting accepted.
+is not a bug fix, you can drastically increase its chances of getting accepted
+by discussing it in advance on the
+L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 The following mission statement and rules are the foundation of all L<Mojo> and
 L<Mojolicious> development. Please make sure that your contribution aligns well
@@ -115,8 +109,6 @@ distribution an example application.
 
 =head2 Rules
 
-General rules for the project:
-
 =over 2
 
 Web development should be easy and fun, this is what we optimize for.
@@ -127,6 +119,14 @@ Keep it simple, no magic unless absolutely necessary.
 
 The installation process should be as fast and painless as possible. (Less than
 a minute on most common hardware is a good rule of thumb)
+
+The addition and modification of features is decided by majority vote or the
+pumpkin-holder.
+
+Any core developer may nominate a new one, who must then be accepted by a 2/3
+majority vote.
+
+The pumpkin-holder has veto rights and may select their successor.
 
 It's not a feature without a test and documentation.
 
@@ -147,10 +147,9 @@ name based on a Unicode character.
 Only add dependencies if absolutely necessary and make them optional if
 possible.
 
-Emulate the style of the existing code and documentation, but don't be afraid to
-adopt newer best practices if you can apply them consistently.
-
 Domain specific languages should be avoided in favor of Perl-ish solutions.
+
+No inline POD.
 
 Documentation belongs to the guides, module POD is just an API reference.
 
@@ -164,7 +163,7 @@ The master source code repository should always be kept in a stable state, use
 feature branches for actual development.
 
 Code has to be run through L<Perl::Tidy> with the included
-L<.perltidyrc|https://github.com/mojolicious/mojo/blob/master/.perltidyrc>, and
+L<.perltidyrc|https://github.com/kraih/mojo/blob/master/.perltidyrc>, and
 everything should look like it was written by a single person.
 
 Functions and methods should be as short as possible, no spaghetti code.
@@ -176,22 +175,24 @@ No names outside of C<Mojolicious.pm>.
 
 =back
 
-=head2 Voting Rules
+=head1 DONATIONS
 
-The voting process used to make decisions for the project:
+L<Mojolicious> is open source and free to use. However, the amount of effort
+needed to maintain the project and develop new features for it is not
+sustainable without proper financial backing. You can support the ongoing
+development of L<Mojolicious> through
+L<Gratipay|https://gratipay.com/mojolicious>,
+L<PayPal|https://www.paypal.me/kraih> or Bitcoin
+(C<1Cid78CmK4hvf78Ry8K2XeDx8pQHNh4hbz>).
 
-=over 2
+If you run a business and use L<Mojolicious> in a revenue generating product, it
+makes business sense to support L<Mojolicious> development. Because it ensures
+that the project your product relies on stays healthy and actively maintained.
+It can also help your exposure within the community and will make it easier to
+attract L<Mojolicious> developers.
 
-A feature can be added or modified when at least 3 members of the core team have
-cast a vote in favour, or the BDFL overruled the vote.
-
-Any core team member may nominate new members, who must then be accepted by a
-2/3 majority vote.
-
-Sebastian has veto rights on all decisions and will resolve issues that could
-not be decided with a vote.
-
-=back
+Please email Sebastian Riedel (C<sri@cpan.org>) if you have any questions about
+becoming a sponsor.
 
 =head1 CODE OF CONDUCT
 
@@ -205,7 +206,7 @@ issues and unhappiness. To that end, we have a few ground rules that we ask
 people to adhere to. This code applies equally to founders, mentors and those
 seeking help and guidance.
 
-This isn't an exhaustive list of things that you can't do. Rather, take it in
+This isn’t an exhaustive list of things that you can’t do. Rather, take it in
 the spirit in which it’s intended - a guide to make it easier to enrich all of
 us and the technical communities in which we participate.
 
@@ -216,7 +217,7 @@ In addition, violations of this code outside these spaces may affect a person's
 ability to participate within them.
 
 If you believe someone is violating the code of conduct, we ask that you report
-it by emailing Joel Berger (C<jberger@mojolicious.org>) or other members of
+it by emailing Joel Berger (C<jberger@cpan.org>) or other members of
 L<the team|Mojolicious/"CORE DEVELOPERS">.
 
 =over 2
@@ -283,6 +284,8 @@ resolve issues and learning from mistakes.
 
 =back
 
+Original text courtesy of the L<Speak Up! project|http://speakup.io/coc.html>.
+
 =head1 FORK POLICY
 
 The L<Mojolicious> core team believes that there is a lot of value in the entire
@@ -302,15 +305,15 @@ bug fixes.
 =head1 MORE
 
 You can continue with L<Mojolicious::Guides> now or take a look at the
-L<Mojolicious wiki|http://github.com/mojolicious/mojo/wiki>, which contains a
-lot more documentation and examples by many different authors.
+L<Mojolicious wiki|http://github.com/kraih/mojo/wiki>, which contains a lot
+more documentation and examples by many different authors.
 
 =head1 SUPPORT
 
 If you have any questions the documentation might not yet answer, don't
 hesitate to ask on the
 L<mailing list|http://groups.google.com/group/mojolicious> or the official IRC
-channel C<#mojo> on C<irc.freenode.net> (L<chat
-now!|https://kiwiirc.com/nextclient/#irc://irc.freenode.net/mojo?nick=guest-?>).
+channel C<#mojo> on C<irc.perl.org>
+(L<chat now!|https://chat.mibbit.com/?channel=%23mojo&server=irc.perl.org>).
 
 =cut

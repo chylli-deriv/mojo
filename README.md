@@ -1,25 +1,13 @@
 
-<p align="center">
-  <a href="https://mojolicious.org">
-    <img src="https://raw.github.com/mojolicious/mojo/master/lib/Mojolicious/resources/public/mojo/logo.png?raw=true" style="margin: 0 auto;">
-  </a>
-</p>
+# Mojolicious [![Build Status](https://travis-ci.org/kraih/mojo.svg?branch=master)](https://travis-ci.org/kraih/mojo) [![Windows build status](https://ci.appveyor.com/api/projects/status/rf4661uxfjolra2y?svg=true)](https://ci.appveyor.com/project/kraih/mojo)
 
- # [![Build Status](https://travis-ci.com/mojolicious/mojo.svg?branch=master)](https://travis-ci.com/mojolicious/mojo) [![Windows build status](https://ci.appveyor.com/api/projects/status/b748ehchfsd4edac?svg=true)](https://ci.appveyor.com/project/kraih73737/mojo)
-
-  Mojolicious is a fresh take on Perl web development, based on years of
-  experience developing the Catalyst framework, and utilizing the latest
-  web standards and technologies. You can get started with your project
-  quickly, with a framework that grows with your needs.
-
-  The Mojo stack provides a consistent set of components that can be used in
-  any project. The guides cover most aspects of using the framework and the
-  components have comprehensive reference documentation. Mojolicious is a
-  real-time web framework, which allows a new class of web applications
-  using WebSockets and having long-running requests without blocking.
-
-  Join us now, and be a part of a friendly and knowledgeable community of
-  developers!
+  Back in the early days of the web, many people learned Perl because of a
+  wonderful Perl library called [CGI](https://metacpan.org/module/CGI). It was
+  simple enough to get started without knowing much about the language and
+  powerful enough to keep you going, learning by doing was much fun. While
+  most of the techniques used are outdated now, the idea behind it is not.
+  Mojolicious is a new endeavor to implement this idea using bleeding edge
+  technologies.
 
 ## Features
 
@@ -34,21 +22,17 @@
     applications, independently of the web framework.
     * Full stack HTTP and WebSocket client/server implementation with IPv6, TLS,
       SNI, IDNA, HTTP/SOCKS5 proxy, UNIX domain socket, Comet (long polling),
-      Promises/A+, async/await, keep-alive, connection pooling, timeout, cookie,
-      multipart, and gzip compression support.
+      keep-alive, connection pooling, timeout, cookie, multipart, and gzip
+      compression support.
     * Built-in non-blocking I/O web server, supporting multiple event loops as
       well as optional pre-forking and hot deployment, perfect for building
       highly scalable web services.
     * JSON and HTML/XML parser with CSS selector support.
   * Very clean, portable and object-oriented pure-Perl API with no hidden
-    magic and no requirements besides Perl 5.26.0 (versions as old as 5.10.1
+    magic and no requirements besides Perl 5.22.0 (versions as old as 5.10.1
     can be used too, but may require additional CPAN modules to be installed)
   * Fresh code based upon years of experience developing
     [Catalyst](http://www.catalystframework.org), free and open source.
-  * Hundreds of 3rd party
-    [extensions](https://metacpan.org/requires/distribution/Mojolicious) and
-    high quality spin-off projects like the
-    [Minion](https://metacpan.org/pod/Minion) job queue.
 
 ## Installation
 
@@ -82,17 +66,16 @@ app->start;
 ## Duct tape for the HTML5 web
 
   Use all the latest Perl and HTML features in beautiful single file
-  prototypes like this one, and
-  [grow](https://mojolicious.org/perldoc/Mojolicious/Guides/Growing#Differences)
-  them easily into well-structured **Model-View-Controller** web applications.
+  prototypes like this one, and grow them easily into well-structured
+  applications.
 
 ```perl
-use Mojolicious::Lite -signatures;
+use Mojolicious::Lite;
+use 5.20.0;
+use experimental 'signatures';
 
 # Render template "index.html.ep" from the DATA section
-get '/' => sub ($c) {
-  $c->render(template => 'index');
-};
+get '/' => {template => 'index'};
 
 # WebSocket service used by the template to extract the title from a website
 websocket '/title' => sub ($c) {
@@ -110,10 +93,10 @@ __DATA__
 <script>
   var ws = new WebSocket('<%= $url->to_abs %>');
   ws.onmessage = function (event) { document.body.innerHTML += event.data };
-  ws.onopen    = function (event) { ws.send('https://mojolicious.org') };
+  ws.onopen    = function (event) { ws.send('http://mojolicious.org') };
 </script>
 ```
 
 ## Want to know more?
 
-  Take a look at our excellent [documentation](https://mojolicious.org/perldoc)!
+  Take a look at our excellent [documentation](http://mojolicious.org/perldoc>)!

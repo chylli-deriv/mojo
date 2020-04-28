@@ -1,12 +1,12 @@
 package Mojo::Server;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp qw(croak);
-use Mojo::File qw(path);
-use Mojo::Loader qw(load_class);
-use Mojo::Util qw(md5_sum);
+use Carp 'croak';
+use Mojo::File 'path';
+use Mojo::Loader 'load_class';
+use Mojo::Util 'md5_sum';
 use POSIX ();
-use Scalar::Util qw(blessed);
+use Scalar::Util 'blessed';
 
 has app           => sub { shift->build_app('Mojo::HelloWorld') };
 has reverse_proxy => sub { $ENV{MOJO_REVERSE_PROXY} };
@@ -30,12 +30,12 @@ sub daemonize {
   # Fork and kill parent
   die "Can't fork: $!" unless defined(my $pid = fork);
   exit 0 if $pid;
-  POSIX::setsid == -1 and die "Can't start a new session: $!";
+  POSIX::setsid or die "Can't start a new session: $!";
 
   # Close filehandles
-  open STDIN,  '<',  '/dev/null';
-  open STDOUT, '>',  '/dev/null';
-  open STDERR, '>&', STDOUT;
+  open STDIN,  '</dev/null';
+  open STDOUT, '>/dev/null';
+  open STDERR, '>&STDOUT';
 }
 
 sub load_app {
@@ -55,7 +55,7 @@ sub load_app {
       "package Mojo::Server::Sandbox::@{[md5_sum $path]}; require \$path";
     die qq{Can't load application from file "$path": $@} if $@;
     die qq{File "$path" did not return an application object.\n}
-      unless blessed $app && $app->can('handler');
+      unless blessed $app && $app->isa('Mojo');
     $self->app($app);
   };
   FindBin->again;
@@ -115,7 +115,7 @@ following new ones.
 
 Emitted when a request is ready and needs to be handled.
 
-  $server->on(request => sub {
+  $server->unsubscribe('request')->on(request => sub {
     my ($server, $tx) = @_;
     $tx->res->code(200);
     $tx->res->headers->content_type('text/plain');
@@ -192,6 +192,6 @@ Run server. Meant to be overloaded in a subclass.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

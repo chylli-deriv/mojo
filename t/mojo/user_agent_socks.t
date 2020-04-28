@@ -7,10 +7,10 @@ use Mojo::IOLoop::Client;
 use Mojo::IOLoop::TLS;
 
 plan skip_all => 'set TEST_SOCKS to enable this test (developer only!)'
-  unless $ENV{TEST_SOCKS} || $ENV{TEST_ALL};
+  unless $ENV{TEST_SOCKS};
 plan skip_all => 'IO::Socket::Socks 0.64+ required for this test!'
   unless Mojo::IOLoop::Client->can_socks;
-plan skip_all => 'IO::Socket::SSL 2.009+ required for this test!'
+plan skip_all => 'IO::Socket::SSL 1.94+ required for this test!'
   unless Mojo::IOLoop::TLS->can_tls;
 
 use Mojo::IOLoop;
@@ -18,7 +18,7 @@ use Mojo::IOLoop::Server;
 use Mojo::IOLoop::Stream;
 use Mojo::UserAgent;
 use Mojolicious::Lite;
-use Scalar::Util qw(weaken);
+use Scalar::Util 'weaken';
 
 # Silence
 app->log->level('fatal');
@@ -105,15 +105,16 @@ Mojo::IOLoop->singleton->reactor->io(
 );
 
 # Failed authentication with SOCKS proxy
-my $ua = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton, insecure => 1);
+my $ua = Mojo::UserAgent->new(ioloop => Mojo::IOLoop->singleton);
 $ua->proxy->http("socks://foo:baz\@127.0.0.1:$port");
 my $tx = $ua->get('/');
+ok !$tx->success, 'not successful';
 ok $tx->error, 'has error';
 
 # Simple request with SOCKS proxy
 $ua->proxy->http("socks://foo:bar\@127.0.0.1:$port");
 $tx = $ua->get('/');
-ok !$tx->error,      'no error';
+ok $tx->success, 'successful';
 ok !$tx->kept_alive, 'kept connection not alive';
 ok $tx->keep_alive, 'keep connection alive';
 is $tx->res->code, 200, 'right status';
@@ -126,7 +127,7 @@ isnt(Mojo::IOLoop->stream($tx->connection)->handle->sockport,
 # Keep alive request with SOCKS proxy
 my $before = $last;
 $tx = $ua->get('/');
-ok !$tx->error, 'no error';
+ok $tx->success,    'successful';
 ok $tx->kept_alive, 'kept connection alive';
 ok $tx->keep_alive, 'keep connection alive';
 is $tx->res->code, 200, 'right status';
@@ -153,7 +154,7 @@ isnt(Mojo::IOLoop->stream($id)->handle->sockport, $last, 'different ports');
 $ua->proxy->https("socks://foo:bar\@127.0.0.1:$port");
 $ua->server->url('https');
 $tx = $ua->get('/secure');
-ok !$tx->error,      'no error';
+ok $tx->success, 'successful';
 ok !$tx->kept_alive, 'kept connection not alive';
 ok $tx->keep_alive, 'keep connection alive';
 is $tx->res->code, 200,           'right status';
@@ -167,7 +168,7 @@ $ua->proxy->http("socks://foo:baz\@127.0.0.1:$port");
 $tx = $ua->build_tx(GET => '/');
 $tx->req->via_proxy(0);
 $tx = $ua->start($tx);
-ok !$tx->error, 'no error';
+ok $tx->success, 'successful';
 is $tx->res->code, 200, 'right status';
 is $tx->res->body, $tx->local_port, 'right content';
 

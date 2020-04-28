@@ -1,9 +1,9 @@
 package Mojo::Loader;
 use Mojo::Base -strict;
 
-use Exporter qw(import);
+use Exporter 'import';
 use Mojo::Exception;
-use Mojo::File qw(path);
+use Mojo::File 'path';
 use Mojo::Util qw(b64_decode class_to_path);
 
 our @EXPORT_OK
@@ -40,8 +40,11 @@ sub load_class {
   # Invalid class name
   return 1 if ($class || '') !~ /^\w(?:[\w:']*\w)?$/;
 
-  # Load if not already loaded
-  return undef if $class->can('new') || eval "require $class; 1";
+  # Already loaded
+  return undef if $class->can('new');
+
+  # Success
+  eval "require $class; 1" ? return undef : Mojo::Util::_teardown($class);
 
   # Does not exist
   return 1 if $@ =~ /^Can't locate \Q@{[class_to_path $class]}\E in \@INC/;
@@ -170,8 +173,7 @@ Search for modules in a namespace non-recursively.
 Load a class and catch exceptions, returns a false value if loading was
 successful, a true value if the class was not found, or a L<Mojo::Exception>
 object if loading failed. Note that classes are checked for a C<new> method to
-see if they are already loaded, so trying to load the same class multiple times
-may yield different results.
+see if they are already loaded.
 
   # Handle exceptions
   if (my $e = load_class 'Foo::Bar') {
@@ -180,6 +182,6 @@ may yield different results.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

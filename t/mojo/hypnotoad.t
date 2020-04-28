@@ -5,10 +5,11 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Test::More;
 
 plan skip_all => 'set TEST_HYPNOTOAD to enable this test (developer only!)'
-  unless $ENV{TEST_HYPNOTOAD} || $ENV{TEST_ALL};
+  unless $ENV{TEST_HYPNOTOAD};
 
+use FindBin;
 use IO::Socket::INET;
-use Mojo::File qw(curfile tempdir);
+use Mojo::File 'tempdir';
 use Mojo::IOLoop::Server;
 use Mojo::Server::Hypnotoad;
 use Mojo::UserAgent;
@@ -28,11 +29,10 @@ use Mojo::UserAgent;
     pid_file           => '/foo/bar.pid',
     proxy              => 1,
     requests           => 3,
-    spare              => 4,
     upgrade_timeout    => 45,
     workers            => 7
   };
-  is $hypnotoad->upgrade_timeout, 180, 'right default';
+  is $hypnotoad->upgrade_timeout, 60, 'right default';
   $hypnotoad->configure('test');
   is_deeply $hypnotoad->prefork->listen, ['http://*:8080'], 'right value';
   $hypnotoad->configure('myserver');
@@ -47,8 +47,7 @@ use Mojo::UserAgent;
   is $hypnotoad->prefork->max_requests, 3,              'right value';
   is $hypnotoad->prefork->pid_file,     '/foo/bar.pid', 'right value';
   ok $hypnotoad->prefork->reverse_proxy, 'reverse proxy enabled';
-  is $hypnotoad->prefork->spare,         4, 'right value';
-  is $hypnotoad->prefork->workers,       7, 'right value';
+  is $hypnotoad->prefork->workers, 7, 'right value';
   is $hypnotoad->upgrade_timeout, 45, 'right value';
 }
 
@@ -94,7 +93,7 @@ app->start;
 EOF
 
 # Start
-my $prefix = curfile->dirname->dirname->sibling('script');
+my $prefix = "$FindBin::Bin/../../script";
 open my $start, '-|', $^X, "$prefix/hypnotoad", $script;
 sleep 3;
 sleep 1 while !_port($port2);
@@ -106,7 +105,7 @@ my $tx = $ua->get("http://127.0.0.1:$port1/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok !$tx->kept_alive, 'connection was not kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Application is alive (second port)
@@ -114,7 +113,7 @@ $tx = $ua->get("http://127.0.0.1:$port2/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok !$tx->kept_alive, 'connection was not kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Same result
@@ -122,7 +121,7 @@ $tx = $ua->get("http://127.0.0.1:$port1/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok $tx->kept_alive,  'connection was kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Same result (second port)
@@ -130,7 +129,7 @@ $tx = $ua->get("http://127.0.0.1:$port2/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok $tx->kept_alive,  'connection was kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Update script (broken)
@@ -154,7 +153,7 @@ $tx = $ua->get("http://127.0.0.1:$port1/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok $tx->kept_alive,  'connection was kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Connection did not get lost (second port)
@@ -162,7 +161,7 @@ $tx = $ua->get("http://127.0.0.1:$port2/hello");
 ok $tx->is_finished, 'transaction is finished';
 ok $tx->keep_alive,  'connection will be kept alive';
 ok $tx->kept_alive,  'connection was kept alive';
-is $tx->res->code, 200,                'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Hello Hypnotoad!', 'right content';
 
 # Request that will be served after graceful shutdown has been initiated
@@ -207,14 +206,8 @@ while (1) {
 Mojo::IOLoop->one_tick until $tx->is_finished;
 ok !$tx->keep_alive, 'connection will not be kept alive';
 ok !$tx->kept_alive, 'connection was not kept alive';
-is $tx->res->code, 200,                  'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'Graceful shutdown!', 'right content';
-
-# One uncertain request that may or may not be served by the old worker
-$tx = $ua->get("http://127.0.0.1:$port1/hello");
-is $tx->res->code, 200, 'right status';
-$tx = $ua->get("http://127.0.0.1:$port2/hello");
-is $tx->res->code, 200, 'right status';
 
 # Application has been reloaded
 $tx = $ua->get("http://127.0.0.1:$port1/hello");
@@ -257,10 +250,9 @@ sleep 1 while _port($port2);
 
 # Check log
 $log = $log->slurp;
-like $log, qr/Worker \d+ started/, 'right message';
-like $log, qr/Starting zero downtime software upgrade \(180 seconds\)/,
-  'right message';
-like $log, qr/Upgrade successful, stopping $old/, 'right message';
+like $log, qr/Worker \d+ started/,                      'right message';
+like $log, qr/Starting zero downtime software upgrade/, 'right message';
+like $log, qr/Upgrade successful, stopping $old/,       'right message';
 
 sub _pid {
   return undef unless open my $file, '<', $dir->child('hypnotoad.pid');

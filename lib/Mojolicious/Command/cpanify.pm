@@ -1,11 +1,11 @@
-package Mojolicious::Command::Author::cpanify;
+package Mojolicious::Command::cpanify;
 use Mojo::Base 'Mojolicious::Command';
 
-use Mojo::File qw(path);
-use Mojo::Util qw(getopt);
+use Mojo::File 'path';
+use Mojo::Util 'getopt';
 
 has description => 'Upload distribution to CPAN';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
   my ($self, @args) = @_;
@@ -26,9 +26,9 @@ sub run {
     }
   );
 
-  if (my $err = $tx->error) {
+  unless ($tx->success) {
     my $code = $tx->res->code // 0;
-    my $msg  = $err->{message};
+    my $msg = $tx->error->{message};
     if    ($code == 401) { $msg = 'Wrong username or password.' }
     elsif ($code == 409) { $msg = 'File already exists on CPAN.' }
     die qq{Problem uploading file "$file": $msg\n};
@@ -43,7 +43,7 @@ sub run {
 
 =head1 NAME
 
-Mojolicious::Command::Author::cpanify - CPAN-ify command
+Mojolicious::Command::cpanify - CPAN-ify command
 
 =head1 SYNOPSIS
 
@@ -58,7 +58,7 @@ Mojolicious::Command::Author::cpanify - CPAN-ify command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::Author::cpanify> uploads files to CPAN.
+L<Mojolicious::Command::cpanify> uploads files to CPAN.
 
 This is a core command, that means it is always enabled and its code a good
 example for learning to build new commands, you're welcome to fork it.
@@ -68,7 +68,7 @@ available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::Author::cpanify> inherits all attributes from
+L<Mojolicious::Command::cpanify> inherits all attributes from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 description
@@ -76,18 +76,18 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $cpanify->description;
   $cpanify        = $cpanify->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $cpanify->usage;
   $cpanify  = $cpanify->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::Author::cpanify> inherits all methods from
+L<Mojolicious::Command::cpanify> inherits all methods from
 L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
@@ -98,6 +98,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

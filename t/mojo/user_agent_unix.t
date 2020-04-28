@@ -3,13 +3,14 @@ use Mojo::Base -strict;
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
 use Test::More;
-use Mojo::File qw(curfile tempdir);
+use Mojo::File 'tempdir';
 use IO::Socket::UNIX;
 
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
 
 plan skip_all => 'set TEST_UNIX to enable this test (developer only!)'
-  unless $ENV{TEST_UNIX} || $ENV{TEST_ALL};
+  unless $ENV{TEST_UNIX};
 my $dir   = tempdir;
 my $dummy = $dir->child('dummy.sock')->to_string;
 plan skip_all => 'UNIX domain socket support required for this test!'
@@ -18,7 +19,7 @@ plan skip_all => 'UNIX domain socket support required for this test!'
 use Mojo::Server::Daemon;
 use Mojo::TestConnectProxy;
 use Mojo::UserAgent;
-use Mojo::Util qw(url_escape);
+use Mojo::Util 'url_escape';
 use Mojolicious::Lite;
 
 # Silence
@@ -71,7 +72,7 @@ is $tx->res->body, '/', 'right content';
 
 # Connection information
 $tx = $ua->get("http+unix://$encoded/info");
-is $tx->res->code, 200,                   'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'None:None:None:None', 'right content';
 
 # WebSocket
@@ -79,7 +80,7 @@ my $result;
 $ua->websocket(
   "ws+unix://$encoded/echo" => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send('roundtrip works!');
   }
@@ -92,7 +93,7 @@ $result = undef;
 $ua->websocket(
   "ws+unix://$encoded/echo" => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send('roundtrip works!');
   }
@@ -109,7 +110,7 @@ $ua->proxy->http("http+unix://$encoded_proxy");
 $ua->websocket(
   'ws://example.com/echo' => sub {
     my ($ua, $tx) = @_;
-    $tx->on(finish  => sub { Mojo::IOLoop->stop });
+    $tx->on(finish => sub { Mojo::IOLoop->stop });
     $tx->on(message => sub { shift->finish; $result = shift });
     $tx->send('roundtrip works!');
   }
@@ -122,11 +123,11 @@ Mojo::IOLoop->remove($id);
 $ua->proxy->http("http+unix://$encoded");
 $tx = $ua->get('http://example.com');
 ok !$tx->kept_alive, 'connection was not kept alive';
-is $tx->res->code, 200,                  'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'http://example.com', 'right content';
 $tx = $ua->get('http://example.com');
 ok $tx->kept_alive, 'connection was kept alive';
-is $tx->res->code, 200,                  'right status';
+is $tx->res->code, 200, 'right status';
 is $tx->res->body, 'http://example.com', 'right content';
 
 # Cleanup

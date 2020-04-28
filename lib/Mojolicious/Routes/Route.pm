@@ -2,31 +2,31 @@ package Mojolicious::Routes::Route;
 use Mojo::Base -base;
 
 use Carp ();
-use Mojo::DynamicMethods -dispatch;
 use Mojo::Util;
 use Mojolicious::Routes::Pattern;
+use Scalar::Util ();
 
-has [qw(inline partial)];
+has [qw(inline parent partial)];
 has 'children' => sub { [] };
-has parent     => undef, weak => 1;
 has pattern    => sub { Mojolicious::Routes::Pattern->new };
 
-sub BUILD_DYNAMIC {
-  my ($class, $method, $dyn_methods) = @_;
+sub AUTOLOAD {
+  my $self = shift;
 
-  return sub {
-    my $self    = shift;
-    my $dynamic = $dyn_methods->{$self->root}{$method};
-    return $self->$dynamic(@_) if $dynamic;
-    my $package = ref($self);
-    Carp::croak qq{Can't locate object method "$method" via package "$package"};
-  };
+  my ($package, $method) = our $AUTOLOAD =~ /^(.+)::(.+)$/;
+  Carp::croak "Undefined subroutine &${package}::$method called"
+    unless Scalar::Util::blessed $self && $self->isa(__PACKAGE__);
+
+  # Call shortcut with current route
+  Carp::croak qq{Can't locate object method "$method" via package "$package"}
+    unless my $shortcut = $self->root->shortcuts->{$method};
+  return $self->$shortcut(@_);
 }
 
 sub add_child {
   my ($self, $route) = @_;
-  push @{$self->children}, $route->remove->parent($self);
-  $route->pattern->types($self->root->types);
+  Scalar::Util::weaken $route->remove->parent($self)->{parent};
+  push @{$self->children}, $route;
   return $self;
 }
 
@@ -133,7 +133,9 @@ sub to {
   if ($shortcut) {
 
     # Application
-    if (ref $shortcut || $shortcut =~ /^[\w:]+$/) { $defaults{app} = $shortcut }
+    if (ref $shortcut || $shortcut =~ /^[\w:]+$/) {
+      $defaults{app} = $shortcut;
+    }
 
     # Controller and action
     elsif ($shortcut =~ /^([\w\-:]+)?\#(\w+)?$/) {
@@ -247,7 +249,7 @@ L<Mojolicious::Routes::Route> implements the following attributes.
   my $children = $r->children;
   $r           = $r->children([Mojolicious::Routes::Route->new]);
 
-The children of this route. Used for nesting routes.
+The children of this route, used for nesting routes.
 
 =head2 inline
 
@@ -261,8 +263,7 @@ Allow L</"under"> semantics for this route.
   my $parent = $r->parent;
   $r         = $r->parent(Mojolicious::Routes::Route->new);
 
-The parent of this route, usually a L<Mojolicious::Routes::Route> object. Note
-that this attribute is weakened.
+The parent of this route, usually a L<Mojolicious::Routes::Route> object.
 
 =head2 partial
 
@@ -613,9 +614,6 @@ HTTP methods to match, which are not available). See
 L<Mojolicious::Guides::Tutorial> and L<Mojolicious::Guides::Routing> for more
 information.
 
-  # Longer version
-  $r->any('/:foo' => sub {...})->inline(1);
-
   # Intermediate destination and prefix shared between two routes
   my $auth = $r->under('/user')->to('user#auth');
   $auth->get('/show')->to('#show');
@@ -652,7 +650,7 @@ L<Mojolicious::Guides::Routing> for more information.
   # Route with destination
   $r->websocket('/echo')->to('example#echo');
 
-=head1 SHORTCUTS
+=head1 AUTOLOAD
 
 In addition to the L</"ATTRIBUTES"> and L</"METHODS"> above you can also call
 shortcuts provided by L</"root"> on L<Mojolicious::Routes::Route> objects.
@@ -669,6 +667,6 @@ shortcuts provided by L</"root"> on L<Mojolicious::Routes::Route> objects.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

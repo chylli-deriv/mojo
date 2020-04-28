@@ -26,25 +26,14 @@ has mapping => sub {
     svg      => ['image/svg+xml'],
     txt      => ['text/plain;charset=UTF-8'],
     webm     => ['video/webm'],
-    woff     => ['font/woff'],
-    woff2    => ['font/woff2'],
+    woff     => ['application/font-woff'],
     xml      => ['application/xml', 'text/xml'],
     zip      => ['application/zip']
   };
 };
 
-sub content_type {
-  my ($self, $c, $o) = (shift, shift, shift // {});
-
-  my $headers = $c->res->headers;
-  return undef if $headers->content_type;
-
-  my $type = $o->{file} ? $self->file_type($o->{file}) : $self->type($o->{ext});
-  $headers->content_type($type // 'application/octet-stream');
-}
-
 sub detect {
-  my ($self, $accept) = @_;
+  my ($self, $accept, $prioritize) = @_;
 
   # Extract and prioritize MIME types
   my %types;
@@ -52,6 +41,7 @@ sub detect {
     and $types{lc $1} = $2 // 1
     for split ',', $accept // '';
   my @detected = sort { $types{$b} <=> $types{$a} } sort keys %types;
+  return [] if !$prioritize && @detected > 1;
 
   # Detect extensions from MIME types
   my %reverse;
@@ -60,11 +50,8 @@ sub detect {
     my @types = @{$mapping->{$ext}};
     push @{$reverse{$_}}, $ext for map { s/\;.*$//; lc $_ } @types;
   }
-
   return [map { @{$reverse{$_} // []} } @detected];
 }
-
-sub file_type { $_[1] =~ /\.(\w+)$/ ? $_[0]->type($1) : undef }
 
 sub type {
   my ($self, $ext, $type) = @_;
@@ -116,8 +103,7 @@ L<Mojolicious::Types> manages MIME types for L<Mojolicious>.
   svg      -> image/svg+xml
   txt      -> text/plain;charset=UTF-8
   webm     -> video/webm
-  woff     -> font/woff
-  woff2    -> font/woff2
+  woff     -> application/font-woff
   xml      -> application/xml,text/xml
   zip      -> application/zip
 
@@ -139,48 +125,16 @@ MIME type mapping.
 L<Mojolicious::Types> inherits all methods from L<Mojo::Base> and implements
 the following new ones.
 
-=head2 content_type
-
-  $types->content_type(Mojolicious::Controller->new, {ext => 'json'});
-
-Detect MIME type for L<Mojolicious::Controller> object unless a C<Content-Type>
-response header has already been set, defaults to using
-C<application/octet-stream> if no better alternative could be found. Note that
-this method is B<EXPERIMENTAL> and might change without warning!
-
-These options are currently available:
-
-=over 2
-
-=item ext
-
-  ext => 'json'
-
-File extension to get MIME type for.
-
-=item file
-
-  file => 'foo/bar.png'
-
-File path to get MIME type for.
-
-=back
-
 =head2 detect
 
-  my $exts = $types->detect('text/html, application/json;q=9');
+  my $exts = $types->detect('application/json;q=9');
+  my $exts = $types->detect('text/html, application/json;q=9', 1);
 
-Detect file extensions from C<Accept> header value.
+Detect file extensions from C<Accept> header value, prioritization of
+unspecific values that contain more than one MIME type is disabled by default.
 
   # List detected extensions prioritized
   say for @{$types->detect('application/json, text/xml;q=0.1', 1)};
-
-=head2 file_type
-
-  my $type = $types->file_type('foo/bar.png');
-
-Get MIME type for file path. Note that this method is B<EXPERIMENTAL> and might
-change without warning!
 
 =head2 type
 
@@ -193,6 +147,6 @@ detection.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

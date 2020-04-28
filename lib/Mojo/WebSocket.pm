@@ -2,7 +2,7 @@ package Mojo::WebSocket;
 use Mojo::Base -strict;
 
 use Config;
-use Exporter qw(import);
+use Exporter 'import';
 use Mojo::Util qw(b64_encode dumper sha1_bytes xor_encode);
 
 use constant DEBUG => $ENV{MOJO_WEBSOCKET_DEBUG} || 0;
@@ -101,7 +101,7 @@ sub parse_frame {
 
   # Head
   return undef unless length $$buffer >= 2;
-  my ($first, $second) = unpack 'C2', $$buffer;
+  my ($first, $second) = unpack 'C*', substr($$buffer, 0, 2);
 
   # FIN
   my $fin = ($first & 0b10000000) == 0b10000000 ? 1 : 0;
@@ -123,7 +123,7 @@ sub parse_frame {
   elsif ($len == 126) {
     return undef unless length $$buffer > 4;
     $hlen = 4;
-    $len  = unpack 'x2n', $$buffer;
+    $len = unpack 'n', substr($$buffer, 2, 2);
     warn "-- Extended 16-bit payload ($len)\n" if DEBUG;
   }
 
@@ -131,7 +131,8 @@ sub parse_frame {
   elsif ($len == 127) {
     return undef unless length $$buffer > 10;
     $hlen = 10;
-    $len  = MODERN ? unpack('x2Q>', $$buffer) : unpack('x2x4N', $$buffer);
+    my $ext = substr $$buffer, 2, 8;
+    $len = MODERN ? unpack('Q>', $ext) : unpack('N', substr($ext, 4, 4));
     warn "-- Extended 64-bit payload ($len)\n" if DEBUG;
   }
 
@@ -276,15 +277,8 @@ Opcode for C<Pong> frames.
 
 Opcode for C<Text> frames.
 
-=head1 DEBUGGING
-
-You can set the C<MOJO_WEBSOCKET_DEBUG> environment variable to get some
-advanced diagnostics information printed to C<STDERR>.
-
-  MOJO_WEBSOCKET_DEBUG=1
-
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

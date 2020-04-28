@@ -1,7 +1,7 @@
 use Mojo::Base -strict;
 
 use Test::More;
-use Mojo::JSON qw(decode_json);
+use Mojo::JSON 'decode_json';
 use Mojo::Server::PSGI;
 use Mojolicious::Command::psgi;
 use Mojolicious::Lite;
@@ -28,7 +28,7 @@ post '/params' => sub {
 };
 
 get '/proxy' => sub {
-  my $c       = shift;
+  my $c = shift;
   my $reverse = join ':', $c->tx->remote_address,
     $c->req->url->to_abs->protocol;
   $c->render(text => $reverse);
@@ -42,14 +42,7 @@ get '/proxy' => sub {
 }
 
 # Binding
-my @server;
-app->hook(
-  before_server_start => sub {
-    my ($server, $app) = @_;
-    push @server, ref $server, $app->mode;
-  }
-);
-my $app     = Mojo::Server::PSGI->new(app => app)->to_psgi_app;
+my $app = Mojo::Server::PSGI->new(app => app)->to_psgi_app;
 my $content = 'hello=world';
 open my $body, '<', \$content;
 my $env = {
@@ -73,9 +66,9 @@ my $res = $app->($env);
 is $res->[0], 200, 'right status';
 my %headers = @{$res->[1]};
 ok keys(%headers) >= 3, 'enough headers';
-ok $headers{Date},             'has "Date" value';
+ok $headers{Date}, 'has "Date" value';
 is $headers{'Content-Length'}, 43, 'right "Content-Length" value';
-is $headers{'Content-Type'},   'application/json;charset=UTF-8',
+is $headers{'Content-Type'}, 'application/json;charset=UTF-8',
   'right "Content-Type" value';
 my $params = '';
 while (defined(my $chunk = $res->[2]->getline)) { $params .= $chunk }
@@ -84,8 +77,6 @@ $res->[2]->close;
 is delete $ENV{MOJO_HELLO}, 'world', 'finish event has been emitted';
 is_deeply decode_json($params), {bar => 'baz', hello => 'world', lalala => 23},
   'right structure';
-is_deeply \@server, ['Mojo::Server::PSGI', 'development'],
-  'hook has been emitted once';
 
 # Command
 $content = 'world=hello';
@@ -112,9 +103,9 @@ $res = $app->($env);
 is $res->[0], 200, 'right status';
 %headers = @{$res->[1]};
 ok keys(%headers) >= 3, 'enough headers';
-ok $headers{Date},             'has "Date" value';
+ok $headers{Date}, 'has "Date" value';
 is $headers{'Content-Length'}, 43, 'right "Content-Length" value';
-is $headers{'Content-Type'},   'application/json;charset=UTF-8',
+is $headers{'Content-Type'}, 'application/json;charset=UTF-8',
   'right "Content-Type" value';
 $params = '';
 while (defined(my $chunk = $res->[2]->getline)) { $params .= $chunk }

@@ -16,7 +16,7 @@ sub emit {
   }
   else {
     warn "-- Emit $name in @{[blessed $self]} (0)\n" if DEBUG;
-    die "@{[blessed $self]}: $_[0]"                  if $name eq 'error';
+    die "@{[blessed $self]}: $_[0]" if $name eq 'error';
   }
 
   return $self;
@@ -188,6 +188,6 @@ advanced diagnostics information printed to C<STDERR>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

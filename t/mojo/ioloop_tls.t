@@ -6,8 +6,8 @@ use Test::More;
 use Mojo::IOLoop::TLS;
 
 plan skip_all => 'set TEST_TLS to enable this test (developer only!)'
-  unless $ENV{TEST_TLS} || $ENV{TEST_ALL};
-plan skip_all => 'IO::Socket::SSL 2.009+ required for this test!'
+  unless $ENV{TEST_TLS};
+plan skip_all => 'IO::Socket::SSL 1.94+ required for this test!'
   unless Mojo::IOLoop::TLS->can_tls;
 
 # To regenerate all required certificates run these commands (12.12.2014)
@@ -43,17 +43,17 @@ my $id  = $loop->server(
     my ($loop, $stream) = @_;
     $stream->write($upgraded => sub { shift->write('321') });
     $stream->on(close => $end);
-    $stream->on(read  => sub { $server .= pop });
+    $stream->on(read => sub { $server .= pop });
   }
 );
 my $port = $loop->acceptor($id)->port;
 my $end2 = $delay->begin;
 $loop->client(
-  {port => $port, tls => 1, tls_verify => 0x00} => sub {
+  {port => $port, tls => 1} => sub {
     my ($loop, $err, $stream) = @_;
     $stream->write('tset' => sub { shift->write('123') });
     $stream->on(close => $end2);
-    $stream->on(read  => sub { $client .= pop });
+    $stream->on(read => sub { $client .= pop });
     $stream->timeout(0.5);
   }
 );
@@ -85,18 +85,17 @@ $id  = Mojo::IOLoop->server(
       }
     );
     $stream->on(error => sub { $server_err = pop });
-    $stream->on(read  => sub { $server .= pop });
+    $stream->on(read => sub { $server .= pop });
     $stream->timeout(0.5);
   }
 );
 $port = Mojo::IOLoop->acceptor($id)->port;
 $end2 = $delay->begin;
 Mojo::IOLoop->client(
-  port       => $port,
-  tls        => 1,
-  tls_cert   => 't/mojo/certs/client.crt',
-  tls_key    => 't/mojo/certs/client.key',
-  tls_verify => 0x00,
+  port     => $port,
+  tls      => 1,
+  tls_cert => 't/mojo/certs/client.crt',
+  tls_key  => 't/mojo/certs/client.key',
   sub {
     my ($loop, $err, $stream) = @_;
     $stream->write('tset' => sub { shift->write('123') });
@@ -194,7 +193,7 @@ $id  = Mojo::IOLoop->server(
       }
     );
     $stream->on(error => sub { $server_err = pop });
-    $stream->on(read  => sub { $server .= pop });
+    $stream->on(read => sub { $server .= pop });
   }
 );
 $port = Mojo::IOLoop->acceptor($id)->port;
@@ -321,11 +320,10 @@ $id = $loop->server(
 );
 $port = $loop->acceptor($id)->port;
 $loop->client(
-  port       => $port,
-  tls        => 1,
-  tls_cert   => 't/mojo/certs/bad.crt',
-  tls_key    => 't/mojo/certs/bad.key',
-  tls_verify => 0x00,
+  port     => $port,
+  tls      => 1,
+  tls_cert => 't/mojo/certs/bad.crt',
+  tls_key  => 't/mojo/certs/bad.key',
   sub {
     my ($loop, $err, $stream) = @_;
     $stream->timeout(0.5);
@@ -353,7 +351,7 @@ $id = Mojo::IOLoop->server(
 );
 $port = Mojo::IOLoop->acceptor($id)->port;
 Mojo::IOLoop->client(
-  {port => $port, tls => 1, tls_verify => 0x00} => sub {
+  {port => $port, tls => 1} => sub {
     shift->stop;
     $client     = 'connected';
     $client_err = shift;
@@ -363,37 +361,5 @@ Mojo::IOLoop->start;
 is $server, 'accepted',  'right result';
 is $client, 'connected', 'right result';
 ok !$client_err, 'no error';
-
-# ALPN
-SKIP: {
-  skip 'ALPN support required!', 1 unless IO::Socket::SSL->can_alpn;
-
-  my ($server_proto, $client_proto);
-  $id = Mojo::IOLoop->server(
-    address       => '127.0.0.1',
-    tls           => 1,
-    tls_protocols => ['foo', 'bar', 'baz'],
-    sub {
-      my ($loop, $stream) = @_;
-      $server_proto = $stream->handle->alpn_selected;
-      $stream->close;
-    }
-  );
-  $port = Mojo::IOLoop->acceptor($id)->port;
-  Mojo::IOLoop->client(
-    port          => $port,
-    tls           => 1,
-    tls_protocols => ['baz', 'bar'],
-    tls_verify    => 0x00,
-    sub {
-      my ($loop, $err, $stream) = @_;
-      $client_proto = $stream->handle->alpn_selected;
-      $stream->on(close => sub { Mojo::IOLoop->stop });
-    }
-  );
-  Mojo::IOLoop->start;
-  is $server_proto, 'baz', 'right protocol';
-  is $client_proto, 'baz', 'right protocol';
-}
 
 done_testing();

@@ -3,16 +3,16 @@ use Mojo::Base -base;
 
 has 'data';
 
-sub contains { shift->_pointer(0, @_) }
-sub get      { shift->_pointer(1, @_) }
+sub contains { shift->_pointer(1, @_) }
+sub get      { shift->_pointer(0, @_) }
 
 sub new { @_ > 1 ? shift->SUPER::new(data => shift) : shift->SUPER::new }
 
 sub _pointer {
-  my ($self, $get, $pointer) = @_;
+  my ($self, $contains, $pointer) = @_;
 
   my $data = $self->data;
-  return length $pointer ? undef : $get ? $data : 1 unless $pointer =~ s!^/!!;
+  return $contains ? 1 : $data unless $pointer =~ s!^/!!;
   for my $p (length $pointer ? (split '/', $pointer, -1) : ($pointer)) {
     $p =~ s!~1!/!g;
     $p =~ s/~0/~/g;
@@ -29,7 +29,7 @@ sub _pointer {
     else { return undef }
   }
 
-  return $get ? $data : 1;
+  return $contains ? 1 : $data;
 }
 
 1;
@@ -117,6 +117,6 @@ Build new L<Mojo::JSON::Pointer> object.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

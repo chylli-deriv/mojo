@@ -1,11 +1,11 @@
 package Mojolicious::Command::routes;
 use Mojo::Base 'Mojolicious::Command';
 
-use re qw(regexp_pattern);
+use re 'regexp_pattern';
 use Mojo::Util qw(encode getopt tablify);
 
 has description => 'Show available routes';
-has usage       => sub { shift->extract_usage };
+has usage => sub { shift->extract_usage };
 
 sub run {
   my ($self, @args) = @_;
@@ -95,14 +95,14 @@ L<Mojolicious::Command> and implements the following new ones.
   my $description = $routes->description;
   $routes         = $routes->description('Foo');
 
-Short description of this command. Used for the command list.
+Short description of this command, used for the command list.
 
 =head2 usage
 
   my $usage = $routes->usage;
   $routes   = $routes->usage('Foo');
 
-Usage information for this command. Used for the help screen.
+Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
@@ -117,6 +117,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

@@ -2,8 +2,8 @@ package Mojolicious::Plugin::TagHelpers;
 use Mojo::Base 'Mojolicious::Plugin';
 
 use Mojo::ByteStream;
-use Mojo::DOM::HTML qw(tag_to_html);
-use Scalar::Util qw(blessed);
+use Mojo::DOM::HTML;
+use Scalar::Util 'blessed';
 
 sub register {
   my ($self, $app) = @_;
@@ -21,10 +21,10 @@ sub register {
   );
   $app->helper($_ => __PACKAGE__->can("_$_")) for @helpers;
 
-  $app->helper(button_to      => sub { _button_to(0, @_) });
-  $app->helper(check_box      => sub { _input(@_, type => 'checkbox') });
+  $app->helper(button_to => sub { _button_to(0, @_) });
+  $app->helper(check_box => sub { _input(@_, type => 'checkbox') });
   $app->helper(csrf_button_to => sub { _button_to(1, @_) });
-  $app->helper(file_field     => sub { _empty_field('file', @_) });
+  $app->helper(file_field => sub { _empty_field('file', @_) });
   $app->helper(image => sub { _tag('img', src => shift->url_for(shift), @_) });
   $app->helper(input_tag      => sub { _input(@_) });
   $app->helper(password_field => sub { _empty_field('password', @_) });
@@ -78,8 +78,8 @@ sub _input {
     # Checkbox or radiobutton
     my $type = $attrs{type} || '';
     if ($type eq 'checkbox' || $type eq 'radio') {
+      delete $attrs{checked} if @values;
       my $value = $attrs{value} // 'on';
-      delete $attrs{checked};
       $attrs{checked} = undef if grep { $_ eq $value } @values;
     }
 
@@ -134,7 +134,7 @@ sub _option {
 sub _select_field {
   my ($c, $name, $options, %attrs) = (shift, shift, shift, @_);
 
-  my %values = map { $_ => 1 } grep {defined} @{$c->every_param($name)};
+  my %values = map { $_ => 1 } @{$c->every_param($name)};
 
   my $groups = '';
   for my $group (@$options) {
@@ -166,7 +166,21 @@ sub _submit_button {
   return _tag('input', value => $value, @_, type => 'submit');
 }
 
-sub _tag { Mojo::ByteStream->new(tag_to_html(@_)) }
+sub _tag {
+  my $tree = ['tag', shift, undef, undef];
+
+  # Content
+  if (ref $_[-1] eq 'CODE') { push @$tree, ['raw', pop->()] }
+  elsif (@_ % 2) { push @$tree, ['text', pop] }
+
+  # Attributes
+  my $attrs = $tree->[2] = {@_};
+  if (ref $attrs->{data} eq 'HASH' && (my $data = delete $attrs->{data})) {
+    @$attrs{map { y/_/-/; lc "data-$_" } keys %$data} = values %$data;
+  }
+
+  return Mojo::ByteStream->new(Mojo::DOM::HTML::_render($tree));
+}
 
 sub _tag_with_error {
   my ($c, $tag) = (shift, shift);
@@ -178,8 +192,8 @@ sub _tag_with_error {
 sub _text_area {
   my ($c, $name) = (shift, shift);
 
-  my $cb      = ref $_[-1] eq 'CODE' ? pop   : undef;
-  my $content = @_ % 2               ? shift : undef;
+  my $cb = ref $_[-1] eq 'CODE' ? pop : undef;
+  my $content = @_ % 2 ? shift : undef;
   $content = $c->param($name) // $content // $cb // '';
 
   return _validation($c, $name, 'textarea', name => $name, @_, $content);
@@ -187,7 +201,7 @@ sub _text_area {
 
 sub _validation {
   my ($c, $name) = (shift, shift);
-  return _tag(@_) unless $c->helpers->validation->has_error($name);
+  return _tag(@_) unless $c->validation->has_error($name);
   return $c->helpers->tag_with_error(@_);
 }
 
@@ -223,10 +237,9 @@ necessary attributes always be generated automatically.
   <%= radio_button country => 'france'  %> France
   <%= radio_button country => 'uk'      %> UK
 
-For fields that failed validation with
-L<Mojolicious::Plugin::DefaultHelpers/"validation"> the C<field-with-error>
-class will be automatically added through L</"tag_with_error">, to make styling
-with CSS easier.
+For fields that failed validation with L<Mojolicious::Controller/"validation">
+the C<field-with-error> class will be automatically added through
+L</"tag_with_error">, to make styling with CSS easier.
 
   <input class="field-with-error" name="age" type="text" value="250">
 
@@ -440,7 +453,6 @@ and shown as default.
 =head2 javascript
 
   %= javascript '/script.js'
-  %= javascript '/script.js', defer => undef
   %= javascript begin
     var a = 'b';
   % end
@@ -448,7 +460,6 @@ and shown as default.
 Generate portable C<script> tag for JavaScript asset.
 
   <script src="/path/to/script.js"></script>
-  <script defer src="/path/to/script.js"></script>
   <script><![CDATA[
     var a = 'b';
   ]]></script>
@@ -485,7 +496,7 @@ Generate C<label> tag.
   %= link_to Contact => 'mailto:sri@example.com'
   <%= link_to index => begin %>Home<% end %>
   <%= link_to '/file.txt' => begin %>File<% end %>
-  <%= link_to 'https://mojolicious.org' => begin %>Mojolicious<% end %>
+  <%= link_to 'http://mojolicious.org' => begin %>Mojolicious<% end %>
   <%= link_to url_for->query(foo => 'bar')->to_abs => begin %>Retry<% end %>
 
 Generate portable C<a> tag with L<Mojolicious::Controller/"url_for">, defaults
@@ -499,7 +510,7 @@ to using the capitalized link target as content.
   <a href="mailto:sri@example.com">Contact</a>
   <a href="/path/to/index">Home</a>
   <a href="/path/to/file.txt">File</a>
-  <a href="https://mojolicious.org">Mojolicious</a>
+  <a href="http://mojolicious.org">Mojolicious</a>
   <a href="http://127.0.0.1:3000/current/path?foo=bar">Retry</a>
 
 =head2 month_field
@@ -621,7 +632,6 @@ get picked up and shown as default.
 =head2 stylesheet
 
   %= stylesheet '/foo.css'
-  %= stylesheet '/foo.css', title => 'Foo style'
   %= stylesheet begin
     body {color: #000}
   % end
@@ -629,7 +639,6 @@ get picked up and shown as default.
 Generate portable C<style> or C<link> tag for CSS asset.
 
   <link href="/path/to/foo.css" rel="stylesheet">
-  <link href="/path/to/foo.css" rel="stylesheet" title="Foo style">
   <style><![CDATA[
     body {color: #000}
   ]]></style>
@@ -657,15 +666,16 @@ Alias for L</"tag">.
   %= tag 'br'
   %= tag 'div'
   %= tag 'div', id => 'foo', hidden => undef
-  %= tag 'div', 'test & 123'
-  %= tag 'div', id => 'foo', 'test & 123'
-  %= tag 'div', data => {my_id => 1, Name => 'test'}, 'test & 123'
+  %= tag div => 'test & 123'
+  %= tag div => (id => 'foo') => 'test & 123'
+  %= tag div => (data => {my_id => 1, Name => 'test'}) => 'test & 123'
   %= tag div => begin
     test & 123
   % end
   <%= tag div => (id => 'foo') => begin %>test & 123<% end %>
 
-Alias for L<Mojo::DOM/"new_tag">.
+HTML tag generator, the C<data> attribute may contain a hash reference with
+key/value pairs to generate attributes from.
 
   <br>
   <div></div>
@@ -682,8 +692,8 @@ Very useful for reuse in more specific tag helpers.
 
   my $output = $c->tag('meta');
   my $output = $c->tag('meta', charset => 'UTF-8');
-  my $output = $c->tag('div', '<p>This will be escaped</p>');
-  my $output = $c->tag('div', sub { '<p>This will not be escaped</p>' });
+  my $output = $c->tag(div => '<p>This will be escaped</p>');
+  my $output = $c->tag(div => sub { '<p>This will not be escaped</p>' });
 
 Results are automatically wrapped in L<Mojo::ByteStream> objects to prevent
 accidental double escaping in C<ep> templates.
@@ -757,15 +767,15 @@ get picked up and shown as default.
 =head2 url_field
 
   %= url_field 'address'
-  %= url_field address => 'https://mojolicious.org'
-  %= url_field address => 'https://mojolicious.org', id => 'foo'
+  %= url_field address => 'http://mojolicious.org'
+  %= url_field address => 'http://mojolicious.org', id => 'foo'
 
 Generate C<input> tag of type C<url>. Previous input values will automatically
 get picked up and shown as default.
 
   <input name="address" type="url">
-  <input name="address" type="url" value="https://mojolicious.org">
-  <input id="foo" name="address" type="url" value="https://mojolicious.org">
+  <input name="address" type="url" value="http://mojolicious.org">
+  <input id="foo" name="address" type="url" value="http://mojolicious.org">
 
 =head2 week_field
 
@@ -793,6 +803,6 @@ Register helpers in L<Mojolicious> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

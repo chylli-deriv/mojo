@@ -2,11 +2,11 @@ package ojo;
 use Mojo::Base -strict;
 
 use Benchmark qw(timeit timestr :hireswallclock);
-use Mojo::ByteStream qw(b);
-use Mojo::Collection qw(c);
+use Mojo::ByteStream 'b';
+use Mojo::Collection 'c';
 use Mojo::DOM;
-use Mojo::File qw(path);
-use Mojo::JSON qw(j);
+use Mojo::File 'path';
+use Mojo::JSON 'j';
 use Mojo::Util qw(dumper monkey_patch);
 
 # Silent one-liners
@@ -17,7 +17,6 @@ sub import {
   # Mojolicious::Lite
   my $caller = caller;
   eval "package $caller; use Mojolicious::Lite; 1" or die $@;
-  Mojo::Base->import(-strict, $] < 5.020 ? () : (-signatures));
   my $ua = $caller->app->ua;
   $ua->server->app->hook(around_action => sub { local $_ = $_[1]; $_[0]() });
 
@@ -35,8 +34,8 @@ sub import {
     h => sub { $ua->head(@_)->result },
     j => \&j,
     n => sub (&@) { say STDERR timestr timeit($_[1] // 1, $_[0]) },
-    o => sub { $ua->options(@_)->result },
-    p => sub { $ua->post(@_)->result },
+    o => sub      { $ua->options(@_)->result },
+    p => sub      { $ua->post(@_)->result },
     r => \&dumper,
     t => sub { $ua->patch(@_)->result },
     u => sub { $ua->put(@_)->result },
@@ -68,19 +67,9 @@ C<MOJO_PROXY> environment variable.
 
   $ MOJO_PROXY=0 perl -Mojo -E 'say g("example.com")->body'
 
-TLS certificate verification can be disabled with the C<MOJO_INSECURE>
-environment variable.
-
-  $ MOJO_INSECURE=1 perl -Mojo -E 'say g("https://127.0.0.1:3000")->body'
-
 Every L<ojo> one-liner is also a L<Mojolicious::Lite> application.
 
   $ perl -Mojo -E 'get "/" => {inline => "%= time"}; app->start' get /
-
-On Perl 5.20+ L<subroutine signatures|perlsub/"Signatures"> will be enabled
-automatically.
-
-  $ perl -Mojo -E 'a(sub ($c) { $c->render(text => "Hello!") })->start' get /
 
 If it is not already defined, the C<MOJO_LOG_LEVEL> environment variable will
 be set to C<fatal>.
@@ -232,6 +221,6 @@ Turn HTML/XML input into L<Mojo::DOM> object.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

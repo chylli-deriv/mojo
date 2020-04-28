@@ -5,11 +5,12 @@ BEGIN {
   $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll';
 }
 
-use Test::Mojo;
 use Test::More;
 
-use Mojo::File qw(curfile);
-use lib curfile->sibling('lib')->to_string;
+use FindBin;
+use lib "$FindBin::Bin/lib";
+
+use Test::Mojo;
 
 my $t = Test::Mojo->new('MojoliciousTest');
 
@@ -27,21 +28,12 @@ is ref $t->app->routes->find('something')->root, 'Mojolicious::Routes',
 is $t->app->sessions->cookie_domain, '.example.com', 'right domain';
 is $t->app->sessions->cookie_path,   '/bar',         'right path';
 is_deeply $t->app->commands->namespaces,
-  [
-  'Mojolicious::Command::Author', 'Mojolicious::Command',
-  'MojoliciousTest::Command'
-  ],
-  'right namespaces';
+  [qw(Mojolicious::Command MojoliciousTest::Command)], 'right namespaces';
 is $t->app, $t->app->commands->app, 'applications are equal';
 is $t->app->static->file('hello.txt')->slurp,
   "Hello Mojo from a static file!\n", 'right content';
 is $t->app->static->file('does_not_exist.html'), undef, 'no file';
 is $t->app->moniker, 'mojolicious_test', 'right moniker';
-
-# Remove extra files
-isnt $t->app->static->file('mojo/jquery/jquery.js'), undef, 'found jQuery';
-delete $t->app->static->extra->{'mojo/jquery/jquery.js'};
-is $t->app->static->file('mojo/jquery/jquery.js'), undef, 'no jQuery';
 
 # Default namespaces
 is_deeply $t->app->routes->namespaces,
@@ -100,30 +92,15 @@ $t->get_ok('/hello.txt')->status_is(200)
 $t->get_ok('/foo/baz')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
 
-# Try to access a file which is not under the web root via path traversal in
-# production mode
+# Try to access a file which is not under the web root via path
+# traversal in production mode
 $t->get_ok('/../../mojolicious/secret.txt')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
 
-# Try to access a file which is not under the web root via path traversal in
-# production mode (triple dot)
+# Try to access a file which is not under the web root via path
+# traversal in production mode (triple dot)
 $t->get_ok('/.../mojolicious/secret.txt')->status_is(404)
   ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Try to access a file which is not under the web root via path traversal in
-# production mode (backslashes)
-$t->get_ok('/..\\..\\mojolicious\\secret.txt')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Try to access a file which is not under the web root via path traversal in
-# production mode (escaped backslashes)
-$t->get_ok('/..%5C..%5Cmojolicious%5Csecret.txt')->status_is(404)
-  ->header_is(Server => 'Mojolicious (Perl)')->content_like(qr/Page not found/);
-
-# Check that backslashes in query or fragment parts don't block access in
-# production mode
-$t->get_ok('/hello.txt?one=\\1#two=\\2')->status_is(200)
-  ->content_like(qr/Hello Mojo from a static file!/);
 
 # Embedded production static file
 $t->get_ok('/some/static/file.txt')->status_is(200)

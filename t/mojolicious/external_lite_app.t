@@ -7,10 +7,12 @@ BEGIN {
 
 use Test::More;
 
-use Test::Mojo;
-use Mojo::File qw(curfile);
+use FindBin;
+require "$FindBin::Bin/external/myapp.pl";
 
-my $t = Test::Mojo->new(curfile->sibling('external', 'myapp.pl'));
+use Test::Mojo;
+
+my $t = Test::Mojo->new;
 
 # Template from myapp.pl
 $t->get_ok('/')->status_is(200)->content_is(<<'EOF');

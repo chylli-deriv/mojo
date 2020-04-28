@@ -3,7 +3,7 @@ use Mojo::Base -base;
 
 use Mojo::IOLoop;
 use Mojo::Server::Daemon;
-use Scalar::Util qw(weaken);
+use Scalar::Util 'weaken';
 
 has ioloop => sub { Mojo::IOLoop->singleton };
 
@@ -22,32 +22,35 @@ sub app {
 
 sub nb_url { shift->_url(1, @_) }
 
-sub restart { delete @{$_[0]}{qw(nb_port nb_server port server)} }
+sub restart { shift->_restart(1) }
 
 sub url { shift->_url(0, @_) }
 
+sub _restart {
+  my ($self, $full, $proto) = @_;
+  delete @{$self}{qw(nb_port port)} if $full;
+
+  $self->{proto} = $proto ||= 'http';
+
+  # Blocking
+  my $server = $self->{server}
+    = Mojo::Server::Daemon->new(ioloop => $self->ioloop, silent => 1);
+  weaken $server->app($self->app)->{app};
+  my $port = $self->{port} ? ":$self->{port}" : '';
+  $self->{port}
+    = $server->listen(["$proto://127.0.0.1$port"])->start->ports->[0];
+
+  # Non-blocking
+  $server = $self->{nb_server} = Mojo::Server::Daemon->new(silent => 1);
+  weaken $server->app($self->app)->{app};
+  $port = $self->{nb_port} ? ":$self->{nb_port}" : '';
+  $self->{nb_port}
+    = $server->listen(["$proto://127.0.0.1$port"])->start->ports->[0];
+}
+
 sub _url {
-  my ($self, $nb, $proto) = @_;
-
-  if (!$self->{server} || $proto) {
-    $proto = $self->{proto} = $proto || 'http';
-
-    # Blocking
-    my $server = $self->{server}
-      = Mojo::Server::Daemon->new(ioloop => $self->ioloop, silent => 1);
-    weaken $server->app($self->app)->{app};
-    my $port = $self->{port} ? ":$self->{port}" : '';
-    $self->{port}
-      = $server->listen(["$proto://127.0.0.1$port"])->start->ports->[0];
-
-    # Non-blocking
-    $server = $self->{nb_server} = Mojo::Server::Daemon->new(silent => 1);
-    weaken $server->app($self->app)->{app};
-    $port = $self->{nb_port} ? ":$self->{nb_port}" : '';
-    $self->{nb_port}
-      = $server->listen(["$proto://127.0.0.1$port"])->start->ports->[0];
-  }
-
+  my ($self, $nb) = (shift, shift);
+  $self->_restart(0, @_) if !$self->{server} || @_;
   my $port = $nb ? $self->{nb_port} : $self->{port};
   return Mojo::URL->new("$self->{proto}://127.0.0.1:$port/");
 }
@@ -104,9 +107,9 @@ global default.
 
 =head2 nb_url
 
-  my $url = $server->nb_url;
-  my $url = $server->nb_url('http');
-  my $url = $server->nb_url('https');
+  my $url = $ua->nb_url;
+  my $url = $ua->nb_url('http');
+  my $url = $ua->nb_url('https');
 
 Get absolute L<Mojo::URL> object for server processing non-blocking requests
 with L</"app"> and switch protocol if necessary.
@@ -119,15 +122,15 @@ Restart server with new port.
 
 =head2 url
 
-  my $url = $server->url;
-  my $url = $server->url('http');
-  my $url = $server->url('https');
+  my $url = $ua->url;
+  my $url = $ua->url('http');
+  my $url = $ua->url('https');
 
 Get absolute L<Mojo::URL> object for server processing blocking requests with
 L</"app"> and switch protocol if necessary.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

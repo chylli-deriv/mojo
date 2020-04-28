@@ -77,9 +77,6 @@ sub startup {
   # /happy/fun/time
   $r->route('/happy')->fun('/time')->to('foo#fun');
 
-  # /fun/joy
-  $r->fun('/joy')->to('foo#joy');
-
   # /stash_config
   $r->route('/stash_config')
     ->to(controller => 'foo', action => 'config', config => {test => 123});
@@ -159,7 +156,7 @@ sub startup {
   $r->route('/rss.xml')->to('foo#bar', format => 'rss');
 
   # /*/* (the default route)
-  $r->route('/<controller>/<action>')->to(action => 'index');
+  $r->route('/(controller)/(action)')->to(action => 'index');
 
   # /just/some/template (embedded template)
   $r->route('/just/some/template')->to(template => 'just/some/template');

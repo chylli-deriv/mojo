@@ -53,9 +53,8 @@ sub every_param {
 sub merge {
   my $self = shift;
 
-  my $merge = @_ == 1 ? shift->to_hash : {@_};
-  for my $name (sort keys %$merge) {
-    my $value = $merge->{$name};
+  my @pairs = @_ == 1 ? @{shift->pairs} : @_;
+  while (my ($name, $value) = splice @pairs, 0, 2) {
     defined $value ? $self->param($name => $value) : $self->remove($name);
   }
 
@@ -248,7 +247,7 @@ Append parameters. Note that this method will normalize the parameters.
 
   my $params2 = $params->clone;
 
-Return a new L<Mojo::Parameters> object cloned from these parameters.
+Clone parameters.
 
 =head2 every_param
 
@@ -380,6 +379,6 @@ Alias for L</"to_string">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

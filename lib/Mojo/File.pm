@@ -6,39 +6,30 @@ use overload
   '""'     => sub { ${$_[0]} },
   fallback => 1;
 
-use Carp qw(croak);
-use Cwd qw(getcwd);
-use Exporter qw(import);
+use Carp 'croak';
+use Cwd 'getcwd';
+use Exporter 'import';
 use File::Basename ();
 use File::Copy qw(copy move);
-use File::Find qw(find);
+use File::Find 'find';
 use File::Path ();
 use File::Spec::Functions
   qw(abs2rel canonpath catfile file_name_is_absolute rel2abs splitdir);
-use File::stat ();
 use File::Temp ();
 use IO::File   ();
 use Mojo::Collection;
 
-our @EXPORT_OK = ('curfile', 'path', 'tempdir', 'tempfile');
+our @EXPORT_OK = ('path', 'tempdir', 'tempfile');
 
-sub basename { File::Basename::basename ${shift()}, @_ }
+sub basename { File::Basename::basename ${$_[0]}, @_ }
 
-sub child { $_[0]->new(${shift()}, @_) }
-
-sub chmod {
-  my ($self, $mode) = @_;
-  chmod $mode, $$self or croak qq{Can't chmod file "$$self": $!};
-  return $self;
-}
+sub child { $_[0]->new(@_) }
 
 sub copy_to {
   my ($self, $to) = @_;
   copy($$self, $to) or croak qq{Can't copy file "$$self" to "$to": $!};
   return $self->new(-d $to ? ($to, File::Basename::basename $self) : $to);
 }
-
-sub curfile { __PACKAGE__->new(Cwd::realpath((caller)[1])) }
 
 sub dirname { $_[0]->new(scalar File::Basename::dirname ${$_[0]}) }
 
@@ -51,7 +42,7 @@ sub list {
   opendir(my $dir, $$self) or croak qq{Can't open directory "$$self": $!};
   my @files = grep { $_ ne '.' && $_ ne '..' } readdir $dir;
   @files = grep { !/^\./ } @files unless $options->{hidden};
-  @files = map  { catfile $$self, $_ } @files;
+  @files = map { catfile $$self, $_ } @files;
   @files = grep { !-d } @files unless $options->{dir};
 
   return Mojo::Collection->new(map { $self->new($_) } sort @files);
@@ -63,24 +54,15 @@ sub list_tree {
   # This may break in the future, but is worth it for performance
   local $File::Find::skip_pattern = qr/^\./ unless $options->{hidden};
 
-  # The File::Find documentation lies, this is needed for CIFS
-  local $File::Find::dont_use_nlink = 1 if $options->{dont_use_nlink};
-
   my %all;
-  my $wanted = sub {
-    if ($options->{max_depth}) {
-      (my $rel = $File::Find::name) =~ s!^\Q$$self\E/?!!;
-      $File::Find::prune = 1 if splitdir($rel) >= $options->{max_depth};
-    }
-    $all{$File::Find::name}++ if $options->{dir} || !-d $File::Find::name;
-  };
-  find {wanted => $wanted, no_chdir => 1}, $$self if -d $$self;
+  my $wanted = {wanted => sub { $all{$File::Find::name}++ }, no_chdir => 1};
+  $wanted->{postprocess} = sub { delete $all{$File::Find::dir} }
+    unless $options->{dir};
+  find $wanted, $$self if -d $$self;
   delete $all{$$self};
 
   return Mojo::Collection->new(map { $self->new(canonpath $_) } sort keys %all);
 }
-
-sub lstat { File::stat::lstat(${shift()}) }
 
 sub make_path {
   my $self = shift;
@@ -96,7 +78,6 @@ sub move_to {
 
 sub new {
   my $class = shift;
-  croak 'Invalid path' if grep { !defined } @_;
   my $value = @_ == 1 ? $_[0] : @_ > 1 ? catfile @_ : canonpath getcwd;
   return bless \$value, ref $class || $class;
 }
@@ -111,12 +92,6 @@ sub open {
 sub path { __PACKAGE__->new(@_) }
 
 sub realpath { $_[0]->new(Cwd::realpath ${$_[0]}) }
-
-sub remove {
-  my ($self, $mode) = @_;
-  unlink $$self or croak qq{Can't remove file "$$self": $!} if -e $$self;
-  return $self;
-}
 
 sub remove_tree {
   my $self = shift;
@@ -148,8 +123,6 @@ sub spurt {
   return $self;
 }
 
-sub stat { File::stat::stat(${shift()}) }
-
 sub tap { shift->Mojo::Base::tap(@_) }
 
 sub tempdir { __PACKAGE__->new(File::Temp->newdir(@_)) }
@@ -163,15 +136,6 @@ sub to_array { [splitdir ${shift()}] }
 sub to_rel { $_[0]->new(abs2rel(${$_[0]}, $_[1])) }
 
 sub to_string {"${$_[0]}"}
-
-sub touch {
-  my $self = shift;
-  $self->open('>') unless -e $$self;
-  utime undef, undef, $$self or croak qq{Can't touch file "$$self": $!};
-  return $self;
-}
-
-sub with_roles { shift->Mojo::Base::with_roles(@_) }
 
 1;
 
@@ -193,7 +157,7 @@ Mojo::File - File system paths
   say $path->sibling('.bashrc');
 
   # Use the alternative constructor
-  use Mojo::File qw(path);
+  use Mojo::File 'path';
   my $path = path('/tmp/foo/bar')->make_path;
   $path->child('test.txt')->spurt('Hello Mojo!');
 
@@ -210,13 +174,6 @@ friendly API for dealing with different operating systems.
 
 L<Mojo::File> implements the following functions, which can be imported
 individually.
-
-=head2 curfile
-
-  my $path = curfile;
-
-Construct a new scalar-based L<Mojo::File> object for the absolute path to the
-current source file.
 
 =head2 path
 
@@ -278,12 +235,6 @@ Return a new L<Mojo::File> object relative to the path.
 
   # "/home/sri/.vimrc" (on UNIX)
   path('/home')->child('sri', '.vimrc');
-
-=head2 chmod
-
-  $path = $path->chmod(0644);
-
-Change file permissions.
 
 =head2 copy_to
 
@@ -367,37 +318,13 @@ These options are currently available:
 
 Include directories.
 
-=item dont_use_nlink
-
-  dont_use_nlink => 1
-
-Force L<File::Find> to always stat directories.
-
 =item hidden
 
   hidden => 1
 
 Include hidden files and directories.
 
-=item max_depth
-
-  max_depth => 3
-
-Maximum number of levels to descend when searching for files.
-
 =back
-
-=head2 lstat
-
-  my $stat = $path->lstat;
-
-Return a L<File::stat> object for the symlink.
-
-  # Get symlink size
-  say path('/usr/sbin/sendmail')->lstat->size;
-
-  # Get symlink modification time
-  say path('/usr/sbin/sendmail')->lstat->mtime;
 
 =head2 make_path
 
@@ -448,12 +375,6 @@ Open file with L<IO::File>.
 
 Resolve the path with L<Cwd> and return the result as a L<Mojo::File> object.
 
-=head2 remove
-
-  $path = $path->remove;
-
-Delete file.
-
 =head2 remove_tree
 
   $path = $path->remove_tree;
@@ -486,18 +407,6 @@ Read all data at once from the file.
   $path = $path->spurt(@chunks_of_bytes);
 
 Write all data at once to the file.
-
-=head2 stat
-
-  my $stat = $path->stat;
-
-Return a L<File::stat> object for the path.
-
-  # Get file size
-  say path('/home/sri/.bashrc')->stat->size;
-
-  # Get file modification time
-  say path('/home/sri/.bashrc')->stat->mtime;
 
 =head2 tap
 
@@ -537,24 +446,6 @@ L<Mojo::File> object.
 
 Stringify the path.
 
-=head2 touch
-
-  $path = $path->touch;
-
-Create file if it does not exist or change the modification and access time to
-the current time.
-
-  # Safely read file
-  say path('.bashrc')->touch->slurp;
-
-=head2 with_roles
-
-  my $new_class = Mojo::File->with_roles('Mojo::File::Role::One');
-  my $new_class = Mojo::File->with_roles('+One', '+Two');
-  $path         = $path->with_roles('+One', '+Two');
-
-Alias for L<Mojo::Base/"with_roles">.
-
 =head1 OPERATORS
 
 L<Mojo::File> overloads the following operators.
@@ -579,6 +470,6 @@ Alias for L</"to_string">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

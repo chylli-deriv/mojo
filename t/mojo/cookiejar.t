@@ -188,24 +188,28 @@ is $cookies->[1], undef, 'no second cookie';
 
 # Switch between secure and normal cookies
 $jar = Mojo::UserAgent::CookieJar->new;
-$jar->add(Mojo::Cookie::Response->new(
-  domain => 'example.com',
-  path   => '/foo',
-  name   => 'foo',
-  value  => 'foo',
-  secure => 1
-));
+$jar->add(
+  Mojo::Cookie::Response->new(
+    domain => 'example.com',
+    path   => '/foo',
+    name   => 'foo',
+    value  => 'foo',
+    secure => 1
+  )
+);
 $cookies = $jar->find(Mojo::URL->new('https://example.com/foo'));
 is $cookies->[0]->name,  'foo', 'right name';
 is $cookies->[0]->value, 'foo', 'right value';
 $cookies = $jar->find(Mojo::URL->new('http://example.com/foo'));
 is scalar @$cookies, 0, 'no insecure cookie';
-$jar->add(Mojo::Cookie::Response->new(
-  domain => 'example.com',
-  path   => '/foo',
-  name   => 'foo',
-  value  => 'bar'
-));
+$jar->add(
+  Mojo::Cookie::Response->new(
+    domain => 'example.com',
+    path   => '/foo',
+    name   => 'foo',
+    value  => 'bar'
+  )
+);
 $cookies = $jar->find(Mojo::URL->new('http://example.com/foo'));
 is $cookies->[0]->name,  'foo', 'right name';
 is $cookies->[0]->value, 'bar', 'right value';
@@ -216,12 +220,14 @@ is $cookies->[1], undef, 'no second cookie';
 
 # "(" in path
 $jar = Mojo::UserAgent::CookieJar->new;
-$jar->add(Mojo::Cookie::Response->new(
-  domain => 'example.com',
-  path   => '/foo(bar',
-  name   => 'foo',
-  value  => 'bar'
-));
+$jar->add(
+  Mojo::Cookie::Response->new(
+    domain => 'example.com',
+    path   => '/foo(bar',
+    name   => 'foo',
+    value  => 'bar'
+  )
+);
 $cookies = $jar->find(Mojo::URL->new('http://example.com/foo(bar'));
 is $cookies->[0]->name,  'foo', 'right name';
 is $cookies->[0]->value, 'bar', 'right value';
@@ -248,10 +254,6 @@ $tx->req->url->parse('http://mojolicious.org/perldoc');
 $jar->prepare($tx);
 is $tx->req->cookie('foo')->name,  'foo',     'right name';
 is $tx->req->cookie('foo')->value, 'without', 'right value';
-is $jar->all->[0]->name,   'foo',             'right name';
-is $jar->all->[0]->value,  'without',         'right value';
-is $jar->all->[0]->domain, 'mojolicious.org', 'right domain';
-is $jar->all->[1], undef, 'no second cookie';
 $tx = Mojo::Transaction::HTTP->new;
 $tx->req->url->parse('http://www.mojolicious.org/perldoc');
 $jar->prepare($tx);
@@ -282,9 +284,11 @@ $tx = Mojo::Transaction::HTTP->new;
 $tx->req->url->parse('http://example.com/test');
 $jar->prepare($tx);
 $cookies = $tx->req->every_cookie('foo');
-is $cookies->[0]->name,  'foo',  'right name';
-is $cookies->[0]->value, 'with', 'right value';
-is $cookies->[1], undef, 'no second cookie';
+is $cookies->[0]->name,  'foo',     'right name';
+is $cookies->[0]->value, 'without', 'right value';
+is $cookies->[1]->name,  'foo',     'right name';
+is $cookies->[1]->value, 'with',    'right value';
+is $cookies->[2], undef, 'no third cookie';
 $tx = Mojo::Transaction::HTTP->new;
 $tx->req->url->parse('http://www.example.com/test');
 $jar->prepare($tx);

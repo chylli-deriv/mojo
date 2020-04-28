@@ -1,15 +1,9 @@
 <!DOCTYPE html>
-<!-- Request ID: <%= $c->req->request_id %> -->
 <html>
-  <head>
-    <title>Page not found</title>
-    <style>
-      a img {
-        border: 0;
-      }
-      body {
-        background-color: #caecf6;
-      }
+  <head><title>Page not found</title></head>
+  <style>
+      a img { border: 0 }
+      body { background-color: #caecf6 }
       #noraptor {
         left: 0%;
         position: fixed;
@@ -26,7 +20,6 @@
         width: 306px;
       }
     </style>
-  </head>
   <body>
     %= link_to url_for->base => begin
       %= image '/mojo/noraptor.png', alt => 'Bye!', id => 'noraptor'

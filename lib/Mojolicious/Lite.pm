@@ -2,9 +2,9 @@ package Mojolicious::Lite;
 use Mojo::Base 'Mojolicious';
 
 # "Bender: Bite my shiny metal ass!"
-use Mojo::File qw(path);
+use Mojo::File 'path';
 use Mojo::UserAgent::Server;
-use Mojo::Util qw(monkey_patch);
+use Mojo::Util 'monkey_patch';
 
 sub import {
 
@@ -18,11 +18,11 @@ sub import {
   # Initialize application class
   my $caller = caller;
   no strict 'refs';
-  push @{"${caller}::ISA"}, 'Mojolicious';
+  push @{"${caller}::ISA"}, 'Mojo';
 
   # Generate moniker based on filename
   my $moniker = path($ENV{MOJO_EXE})->basename('.pl', '.pm', '.t');
-  my $app     = shift->new(moniker => $moniker);
+  my $app = shift->new(moniker => $moniker);
 
   # Initialize routes without namespaces
   my $routes = $app->routes->namespaces([]);
@@ -34,7 +34,7 @@ sub import {
     monkey_patch $caller, $name, sub { $routes->$name(@_) };
   }
   monkey_patch($caller, $_, sub {$app}) for qw(new app);
-  monkey_patch $caller, del   => sub { $routes->delete(@_) };
+  monkey_patch $caller, del => sub { $routes->delete(@_) };
   monkey_patch $caller, group => sub (&) {
     (my $old, $root) = ($root, $routes);
     shift->();
@@ -50,8 +50,7 @@ sub import {
   Mojo::UserAgent::Server->app($app) unless Mojo::UserAgent::Server->app;
 
   # Lite apps are strict!
-  unshift @_, 'Mojo::Base', '-strict';
-  goto &Mojo::Base::import;
+  Mojo::Base->import(-strict);
 }
 
 1;
@@ -81,18 +80,6 @@ Mojolicious::Lite - Micro real-time web framework
 
 L<Mojolicious::Lite> is a tiny domain specific language built around
 L<Mojolicious>, made up of only about a dozen Perl functions.
-
-On Perl 5.20+ you can also use a C<-signatures> flag to enable support for
-L<subroutine signatures|perlsub/"Signatures">.
-
-  use Mojolicious::Lite -signatures;
-
-  get '/:foo' => sub ($c) {
-    my $foo = $c->param('foo');
-    $c->render(text => "Hello from $foo.");
-  };
-
-  app->start;
 
 See L<Mojolicious::Guides::Tutorial> for more!
 
@@ -353,6 +340,6 @@ L<Mojolicious::Lite> inherits all methods from L<Mojolicious>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

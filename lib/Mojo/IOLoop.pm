@@ -3,7 +3,7 @@ use Mojo::Base 'Mojo::EventEmitter';
 
 # "Professor: Amy, technology isn't intrinsically good or evil. It's how it's
 #             used. Like the death ray."
-use Carp qw(croak);
+use Carp 'croak';
 use Mojo::IOLoop::Client;
 use Mojo::IOLoop::Delay;
 use Mojo::IOLoop::Server;
@@ -36,7 +36,8 @@ sub acceptor {
   return $self->{acceptors}{$acceptor} unless ref $acceptor;
 
   # Connect acceptor with reactor
-  $self->{acceptors}{my $id = $self->_id} = $acceptor->reactor($self->reactor);
+  $self->{acceptors}{my $id = $self->_id} = $acceptor;
+  weaken $acceptor->reactor($self->reactor)->{reactor};
 
   # Allow new acceptor to get picked up
   $self->_not_accepting->_maybe_accepting;
@@ -47,9 +48,9 @@ sub acceptor {
 sub client {
   my ($self, $cb) = (_instance(shift), pop);
 
-  my $id     = $self->_id;
-  my $client = $self->{out}{$id}{client}
-    = Mojo::IOLoop::Client->new(reactor => $self->reactor);
+  my $id = $self->_id;
+  my $client = $self->{out}{$id}{client} = Mojo::IOLoop::Client->new;
+  weaken $client->reactor($self->reactor)->{reactor};
 
   weaken $self;
   $client->on(
@@ -67,7 +68,8 @@ sub client {
 }
 
 sub delay {
-  my $delay = Mojo::IOLoop::Delay->new->ioloop(_instance(shift));
+  my $delay = Mojo::IOLoop::Delay->new;
+  weaken $delay->ioloop(_instance(shift))->{ioloop};
   return @_ ? $delay->steps(@_) : $delay;
 }
 
@@ -95,8 +97,8 @@ sub remove {
 }
 
 sub reset {
-  my $self = _instance(shift)->emit('reset');
-  delete @$self{qw(accepting acceptors events in out stop)};
+  my $self = _instance(shift);
+  delete @$self{qw(accepting acceptors in out stop)};
   $self->reactor->reset;
   $self->stop;
 }
@@ -126,7 +128,7 @@ sub server {
   return $self->acceptor($server);
 }
 
-sub singleton { state $loop = shift->new }
+sub singleton { state $loop = shift->SUPER::new }
 
 sub start {
   my $self = _instance(shift);
@@ -149,8 +151,9 @@ sub stream {
 }
 
 sub subprocess {
-  my $subprocess = Mojo::IOLoop::Subprocess->new(ioloop => _instance(shift));
-  return @_ ? $subprocess->run(@_) : $subprocess;
+  my $subprocess = Mojo::IOLoop::Subprocess->new;
+  weaken $subprocess->ioloop(_instance(shift))->{ioloop};
+  return $subprocess->run(@_);
 }
 
 sub timer { shift->_timer(timer => @_) }
@@ -189,15 +192,15 @@ sub _remove {
   my ($self, $id) = @_;
 
   # Timer
-  return undef unless my $reactor = $self->reactor;
-  return undef if $reactor->remove($id);
+  return unless my $reactor = $self->reactor;
+  return if $reactor->remove($id);
 
   # Acceptor
   return $self->_not_accepting->_maybe_accepting
     if delete $self->{acceptors}{$id};
 
   # Connection
-  return undef unless delete $self->{in}{$id} || delete $self->{out}{$id};
+  return unless delete $self->{in}{$id} || delete $self->{out}{$id};
   return $self->stop if $self->{stop} && !$self->_in;
   $self->_maybe_accepting;
   warn "-- $id <<< $$ (@{[$self->_in]}:@{[$self->_out]})\n" if DEBUG;
@@ -207,9 +210,9 @@ sub _stream {
   my ($self, $stream, $id, $server) = @_;
 
   # Connect stream with reactor
-  $self->{$server ? 'in' : 'out'}{$id}{stream}
-    = $stream->reactor($self->reactor);
+  $self->{$server ? 'in' : 'out'}{$id}{stream} = $stream;
   warn "-- $id >>> $$ (@{[$self->_in]}:@{[$self->_out]})\n" if DEBUG;
+  weaken $stream->reactor($self->reactor)->{reactor};
   weaken $self;
   $stream->on(close => sub { $self && $self->_remove($id) });
   $stream->start;
@@ -300,7 +303,7 @@ loaded.
 For better scalability (epoll, kqueue) and to provide non-blocking name
 resolution, SOCKS5 as well as TLS support, the optional modules L<EV> (4.0+),
 L<Net::DNS::Native> (0.15+), L<IO::Socket::Socks> (0.64+) and
-L<IO::Socket::SSL> (2.009+) will be used automatically if possible. Individual
+L<IO::Socket::SSL> (1.94+) will be used automatically if possible. Individual
 features can also be disabled with the C<MOJO_NO_NNR>, C<MOJO_NO_SOCKS> and
 C<MOJO_NO_TLS> environment variables.
 
@@ -320,16 +323,6 @@ following new ones.
 
 Emitted when the event loop wants to shut down gracefully and is just waiting
 for all existing connections to be closed.
-
-=head2 reset
-
-  $loop->on(reset => sub {
-    my $loop = shift;
-    ...
-  });
-
-Emitted when the event loop is reset, this usually happens after the process is
-forked to clean up resources that cannot be shared.
 
 =head1 ATTRIBUTES
 
@@ -397,9 +390,14 @@ Get L<Mojo::IOLoop::Server> object for id or turn object into an acceptor.
   my $id = $loop->client(address => '127.0.0.1', port => 3000, sub {...});
   my $id = $loop->client({address => '127.0.0.1', port => 3000} => sub {...});
 
-Open a TCP/IP or UNIX domain socket connection with L<Mojo::IOLoop::Client> and
-create a stream object (usually L<Mojo::IOLoop::Stream>), takes the same
-arguments as L<Mojo::IOLoop::Client/"connect">.
+Open a TCP/IP or UNIX domain socket connection with L<Mojo::IOLoop::Client>,
+takes the same arguments as L<Mojo::IOLoop::Client/"connect">.
+
+  # Connect to 127.0.0.1 on port 3000
+  Mojo::IOLoop->client({port => 3000} => sub {
+    my ($loop, $err, $stream) = @_;
+    ...
+  });
 
 =head2 delay
 
@@ -408,24 +406,10 @@ arguments as L<Mojo::IOLoop::Client/"connect">.
   my $delay = $loop->delay(sub {...});
   my $delay = $loop->delay(sub {...}, sub {...});
 
-Build L<Mojo::IOLoop::Delay> object to use as a promise and/or for flow-control.
-Callbacks will be passed along to L<Mojo::IOLoop::Delay/"steps">.
-
-  # Wrap continuation-passing style APIs with promises
-  my $ua = Mojo::UserAgent->new;
-  sub get {
-    my $promise = Mojo::IOLoop->delay;
-    $ua->get(@_ => sub {
-      my ($ua, $tx) = @_;
-      my $err = $tx->error;
-      if   (!$err || $err->{code}) { $promise->resolve($tx) }
-      else                         { $promise->reject($err->{message}) }
-    });
-    return $promise;
-  }
-  my $mojo = get('https://mojolicious.org');
-  my $cpan = get('https://metacpan.org');
-  Mojo::Promise->race($mojo, $cpan)->then(sub { say shift->req->url })->wait;
+Build L<Mojo::IOLoop::Delay> object to manage callbacks and control the flow of
+events for this event loop, which can help you avoid deep nested closures that
+often result from continuation-passing style. Callbacks will be passed along to
+L<Mojo::IOLoop::Delay/"steps">.
 
   # Synchronize multiple non-blocking operations
   my $delay = Mojo::IOLoop->delay(sub { say 'BOOM!' });
@@ -460,12 +444,29 @@ Callbacks will be passed along to L<Mojo::IOLoop::Delay/"steps">.
     sub { say 'And done after 5 seconds total.' }
   )->wait;
 
+  # Handle exceptions in all steps
+  Mojo::IOLoop->delay(
+    sub {
+      my $delay = shift;
+      die 'Intentional error';
+    },
+    sub {
+      my ($delay, @args) = @_;
+      say 'Never actually reached.';
+    }
+  )->catch(sub {
+    my ($delay, $err) = @_;
+    say "Something went wrong: $err";
+  })->wait;
+
 =head2 is_running
 
   my $bool = Mojo::IOLoop->is_running;
   my $bool = $loop->is_running;
 
 Check if event loop is running.
+
+  exit unless Mojo::IOLoop->is_running;
 
 =head2 next_tick
 
@@ -529,9 +530,14 @@ Remove everything and stop the event loop.
   my $id = $loop->server(port => 3000, sub {...});
   my $id = $loop->server({port => 3000} => sub {...});
 
-Accept TCP/IP and UNIX domain socket connections with L<Mojo::IOLoop::Server>
-and create stream objects (usually L<Mojo::IOLoop::Stream>, takes the same
-arguments as L<Mojo::IOLoop::Server/"listen">.
+Accept TCP/IP and UNIX domain socket connections with L<Mojo::IOLoop::Server>,
+takes the same arguments as L<Mojo::IOLoop::Server/"listen">.
+
+  # Listen on port 3000
+  Mojo::IOLoop->server({port => 3000} => sub {
+    my ($loop, $stream, $id) = @_;
+    ...
+  });
 
   # Listen on random port
   my $id = Mojo::IOLoop->server({address => '127.0.0.1'} => sub {
@@ -544,7 +550,7 @@ arguments as L<Mojo::IOLoop::Server/"listen">.
 
   my $loop = Mojo::IOLoop->singleton;
 
-The global L<Mojo::IOLoop> singleton. Used to access a single shared event loop
+The global L<Mojo::IOLoop> singleton, used to access a single shared event loop
 object from everywhere inside the process.
 
   # Many methods also allow you to take shortcuts
@@ -603,7 +609,6 @@ Get L<Mojo::IOLoop::Stream> object for id or turn object into a connection.
 =head2 subprocess
 
   my $subprocess = Mojo::IOLoop->subprocess(sub {...}, sub {...});
-  my $subprocess = $loop->subprocess;
   my $subprocess = $loop->subprocess(sub {...}, sub {...});
 
 Build L<Mojo::IOLoop::Subprocess> object to perform computationally expensive
@@ -648,6 +653,6 @@ diagnostics information printed to C<STDERR>.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut

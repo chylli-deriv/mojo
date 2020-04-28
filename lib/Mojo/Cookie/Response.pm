@@ -4,10 +4,9 @@ use Mojo::Base 'Mojo::Cookie';
 use Mojo::Date;
 use Mojo::Util qw(quote split_cookie_header);
 
-has [qw(domain expires host_only httponly max_age path samesite secure)];
+has [qw(domain expires httponly max_age origin path secure)];
 
-my %ATTRS
-  = map { $_ => 1 } qw(domain expires httponly max-age path samesite secure);
+my %ATTRS = map { $_ => 1 } qw(domain expires httponly max-age path secure);
 
 sub parse {
   my ($self, $str) = @_;
@@ -35,7 +34,7 @@ sub to_string {
 
   # Name and value
   return '' unless length(my $name = $self->name // '');
-  my $value  = $self->value // '';
+  my $value = $self->value // '';
   my $cookie = join '=', $name, $value =~ /[,;" ]/ ? quote $value : $value;
 
   # "expires"
@@ -53,9 +52,6 @@ sub to_string {
 
   # "HttpOnly"
   $cookie .= "; HttpOnly" if $self->httponly;
-
-  # "Same-Site"
-  if (my $samesite = $self->samesite) { $cookie .= "; SameSite=$samesite" }
 
   # "Max-Age"
   if (defined(my $max = $self->max_age)) { $cookie .= "; Max-Age=$max" }
@@ -104,14 +100,6 @@ Cookie domain.
 
 Expiration for cookie.
 
-=head2 host_only
-
-  my $bool = $cookie->host_only;
-  $cookie  = $cookie->host_only($bool);
-
-Host-only flag, indicating that the canonicalized request-host is identical to
-the cookie's L</"domain">.
-
 =head2 httponly
 
   my $bool = $cookie->httponly;
@@ -127,22 +115,19 @@ cookie.
 
 Max age for cookie.
 
+=head2 origin
+
+  my $origin = $cookie->origin;
+  $cookie    = $cookie->origin('mojolicious.org');
+
+Origin of the cookie.
+
 =head2 path
 
   my $path = $cookie->path;
   $cookie  = $cookie->path('/test');
 
 Cookie path.
-
-=head2 samesite
-
-  my $samesite = $cookie->samesite;
-  $cookie      = $cookie->samesite('Lax');
-
-SameSite value. Note that this attribute is B<EXPERIMENTAL> because even though
-most commonly used browsers support the feature, there is no specification yet
-besides
-L<this draft|https://tools.ietf.org/html/draft-west-first-party-cookies-07>.
 
 =head2 secure
 
@@ -171,6 +156,6 @@ Render cookie.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
 
 =cut
