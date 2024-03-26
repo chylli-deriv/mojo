@@ -759,21 +759,10 @@ EOT
 -$]
 $-= $output
 EOF
-# start from perl 5.38.0, $SIG{__DIE__} will be called when a bareword is there,
-# even it is in a eval string (it is not in previous perl version). 
-# So the error message is changed. We just simply change the expected error
-# message here directly, since we are upgrading Mojo soon. See 
-# https://perldoc.perl.org/perl5380delta#Selected-Bug-Fixes 
 is $output, <<'EOF', 'exception in nested template';
 test
 
 Bareword "bar" not allowed while "strict subs" in use at template line 1.
-1: test
-2: $- my $mt = Mojo::Template->new;
-3: [$- my $output = $mt->render(<<'EOT');
-4: %= bar
-5: EOT
-6: -$]
 1: %= bar
 
 EOF
