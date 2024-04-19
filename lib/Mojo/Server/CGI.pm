@@ -6,6 +6,7 @@ has 'nph';
 sub run {
   my $self = shift;
 
+  $self->app->server($self);
   my $tx  = $self->build_tx;
   my $req = $tx->req->parse(\%ENV);
   $tx->local_port($ENV{SERVER_PORT})->remote_address($ENV{REMOTE_ADDR});
@@ -32,7 +33,7 @@ sub run {
   my $code = $res->code    || 404;
   my $msg  = $res->message || $res->default_message;
   $res->headers->status("$code $msg") unless $self->nph;
-  return undef unless _write($res, 'get_header_chunk');
+  return undef                        unless _write($res, 'get_header_chunk');
 
   # Response body
   return undef unless $tx->is_empty || _write($res, 'get_body_chunk');
@@ -77,8 +78,7 @@ Mojo::Server::CGI - CGI server
   use Mojo::Server::CGI;
 
   my $cgi = Mojo::Server::CGI->new;
-  $cgi->unsubscribe('request')->on(request => sub {
-    my ($cgi, $tx) = @_;
+  $cgi->unsubscribe('request')->on(request => sub ($cgi, $tx) {
 
     # Request
     my $method = $tx->req->method;
@@ -96,8 +96,7 @@ Mojo::Server::CGI - CGI server
 
 =head1 DESCRIPTION
 
-L<Mojo::Server::CGI> is a simple and portable implementation of
-L<RFC 3875|http://tools.ietf.org/html/rfc3875>.
+L<Mojo::Server::CGI> is a simple and portable implementation of L<RFC 3875|https://tools.ietf.org/html/rfc3875>.
 
 See L<Mojolicious::Guides::Cookbook/"DEPLOYMENT"> for more.
 
@@ -107,8 +106,7 @@ L<Mojo::Server::CGI> inherits all events from L<Mojo::Server>.
 
 =head1 ATTRIBUTES
 
-L<Mojo::Server::CGI> inherits all attributes from L<Mojo::Server> and
-implements the following new ones.
+L<Mojo::Server::CGI> inherits all attributes from L<Mojo::Server> and implements the following new ones.
 
 =head2 nph
 
@@ -119,8 +117,7 @@ Activate non-parsed header mode.
 
 =head1 METHODS
 
-L<Mojo::Server::CGI> inherits all methods from L<Mojo::Server> and implements
-the following new ones.
+L<Mojo::Server::CGI> inherits all methods from L<Mojo::Server> and implements the following new ones.
 
 =head2 run
 
@@ -130,6 +127,6 @@ Run CGI.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

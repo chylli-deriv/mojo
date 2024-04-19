@@ -2,11 +2,11 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
+use Test::Mojo;
 use Test::More;
 use Mojo::Asset::Memory;
 use Mojo::Upload;
 use Mojolicious::Lite;
-use Test::Mojo;
 
 # Custom check
 app->validator->add_check(two => sub { length $_[2] == 2 ? undef : "e:$_[1]" });
@@ -14,354 +14,429 @@ app->validator->add_check(two => sub { length $_[2] == 2 ? undef : "e:$_[1]" });
 any '/' => sub {
   my $c = shift;
 
-  my $validation = $c->validation;
-  return $c->render unless $validation->has_data;
+  my $v = $c->validation;
+  return $c->render unless $v->has_data;
 
-  $validation->required('foo')->two->in('☃☃');
-  $validation->optional('bar')->two;
-  $validation->optional('baz')->two;
-  $validation->optional('yada')->two;
+  $v->required('foo')->two->in('☃☃');
+  $v->optional('bar')->two;
+  $v->optional('baz')->two;
+  $v->optional('yada')->two;
 } => 'index';
 
 any '/upload' => sub {
-  my $c          = shift;
-  my $validation = $c->validation;
-  return $c->render unless $validation->has_data;
-  $validation->required('foo')->upload;
+  my $c = shift;
+  my $v = $c->validation;
+  return $c->render unless $v->has_data;
+  $v->required('foo')->upload;
 };
 
 any '/forgery' => sub {
-  my $c          = shift;
-  my $validation = $c->validation;
-  return $c->render unless $validation->has_data;
-  $validation->csrf_protect->required('foo');
+  my $c = shift;
+  my $v = $c->validation;
+  return $c->render unless $v->has_data;
+  $v->csrf_protect->required('foo');
 };
 
 my $t = Test::Mojo->new;
 
-# Required and optional values
-my $validation = $t->app->validation->input({foo => 'bar', baz => 'yada'});
-is_deeply $validation->passed, [], 'no names';
-is_deeply $validation->failed, [], 'no names';
-is $validation->param('foo'), undef, 'no value';
-is_deeply $validation->every_param('foo'), [], 'no values';
-ok $validation->required('foo')->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-is $validation->param, 'bar', 'right value';
-is $validation->param('foo'), 'bar', 'right value';
-is_deeply $validation->every_param,        ['bar'], 'right values';
-is_deeply $validation->every_param('foo'), ['bar'], 'right values';
-is_deeply $validation->passed,             ['foo'], 'right names';
-ok !$validation->has_error, 'no error';
-ok $validation->optional('baz')->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar', baz => 'yada'}, 'right result';
-is $validation->param('baz'), 'yada', 'right value';
-is_deeply $validation->passed, [qw(baz foo)], 'right names';
-ok !$validation->has_error, 'no error';
-ok !$validation->optional('does_not_exist')->is_valid, 'not valid';
-is_deeply $validation->output, {foo => 'bar', baz => 'yada'}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->required('does_not_exist')->is_valid, 'not valid';
-is_deeply $validation->output, {foo => 'bar', baz => 'yada'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('does_not_exist'), ['required'], 'right error';
-$validation = $t->app->validation->input(
-  {foo => [], bar => ['a'], baz => undef, yada => [undef]});
-ok !$validation->optional('foo')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->optional('baz')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->optional('yada')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok !$validation->has_error, 'no error';
-ok $validation->optional('bar')->is_valid, 'valid';
-is_deeply $validation->output, {bar => ['a']}, 'right result';
-ok !$validation->in('c')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok $validation->has_error, 'has error';
+subtest 'Required and optional values' => sub {
+  my $v = $t->app->validation->input({foo => 'bar', baz => 'yada'});
+  is_deeply $v->passed, [], 'no names';
+  is_deeply $v->failed, [], 'no names';
+  is $v->param('foo'), undef, 'no value';
+  is_deeply $v->every_param('foo'), [], 'no values';
+  ok $v->required('foo')->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  is $v->param,        'bar', 'right value';
+  is $v->param('foo'), 'bar', 'right value';
+  is_deeply $v->every_param,        ['bar'], 'right values';
+  is_deeply $v->every_param('foo'), ['bar'], 'right values';
+  is_deeply $v->passed,             ['foo'], 'right names';
+  ok !$v->has_error,                'no error';
+  ok $v->optional('baz')->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar', baz => 'yada'}, 'right result';
+  is $v->param('baz'), 'yada', 'right value';
+  is_deeply $v->passed, [qw(baz foo)], 'right names';
+  ok !$v->has_error,                            'no error';
+  ok !$v->optional('does_not_exist')->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar', baz => 'yada'}, 'right result';
+  ok !$v->has_error,                            'no error';
+  ok !$v->required('does_not_exist')->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar', baz => 'yada'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('does_not_exist'), ['required'], 'right error';
+  $v = $t->app->validation->input({foo => [], bar => ['a'], baz => undef, yada => [undef]});
+  ok !$v->optional('foo')->is_valid, 'not valid';
+  is_deeply $v->output, {}, 'right result';
+  ok !$v->has_error,                 'no error';
+  ok !$v->optional('baz')->is_valid, 'not valid';
+  is_deeply $v->output, {}, 'right result';
+  ok !$v->has_error,                  'no error';
+  ok !$v->optional('yada')->is_valid, 'not valid';
+  is_deeply $v->output, {}, 'right result';
+  ok !$v->has_error,                'no error';
+  ok $v->optional('bar')->is_valid, 'valid';
+  is_deeply $v->output, {bar => 'a'}, 'right result';
+  ok !$v->in('c')->is_valid, 'not valid';
+  is_deeply $v->output, {}, 'right result';
+  ok $v->has_error, 'has error';
+};
 
-# Equal to
-$validation
-  = $t->app->validation->input({foo => 'bar', baz => 'bar', yada => 'yada'});
-ok $validation->optional('foo')->equal_to('baz')->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->optional('baz')->equal_to('does_not_exist')->is_valid,
-  'not valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('baz'), [qw(equal_to 1 does_not_exist)],
-  'right error';
-ok !$validation->optional('yada')->equal_to('foo')->is_valid, 'not valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('yada'), [qw(equal_to 1 foo)], 'right error';
-is_deeply $validation->failed,        [qw(baz yada)],       'right names';
+subtest 'Empty string' => sub {
+  my $v = $t->app->validation->input({foo => ''});
+  ok $v->optional('foo')->is_valid, 'valid';
+  is_deeply $v->output, {foo => ''}, 'right result';
+};
 
-# In
-$validation = $t->app->validation->input(
-  {foo => [qw(bar whatever)], baz => [qw(yada ohoh)]});
-ok $validation->required('foo')->in(qw(23 bar whatever))->is_valid, 'valid';
-is_deeply $validation->every_param('foo'), [qw(bar whatever)], 'right results';
-is $validation->param('foo'), 'whatever', 'right result';
-is_deeply $validation->output, {foo => [qw(bar whatever)]}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->required('baz')->in(qw(yada whatever))->is_valid, 'not valid';
-is_deeply $validation->output, {foo => [qw(bar whatever)]}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('baz'), [qw(in 1 yada whatever)], 'right error';
-is_deeply $validation->failed, ['baz'], 'right names';
+subtest 'Equal to' => sub {
+  my $v = $t->app->validation->input({foo => 'bar', baz => 'bar', yada => 'yada'});
+  ok $v->optional('foo')->equal_to('baz')->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok !$v->has_error,                                             'no error';
+  ok !$v->optional('baz')->equal_to('does_not_exist')->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('baz'), [qw(equal_to 1 does_not_exist)], 'right error';
+  ok !$v->optional('yada')->equal_to('foo')->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('yada'), [qw(equal_to 1 foo)], 'right error';
+  is_deeply $v->failed,        [qw(baz yada)],       'right names';
+};
 
-# Like
-$validation = $t->app->validation->input({foo => 'bar', baz => 'yada'});
-ok $validation->required('foo')->like(qr/^b/)->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok !$validation->has_error, 'no error';
-my $re = qr/ar$/;
-ok !$validation->required('baz')->like($re)->is_valid, 'not valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('baz'), ['like', 1, $re], 'right error';
+subtest 'In' => sub {
+  my $v = $t->app->validation->input({foo => [qw(bar whatever)], baz => [qw(yada ohoh)]});
+  ok $v->required('foo')->in(qw(23 bar whatever))->is_valid, 'valid';
+  is_deeply $v->every_param('foo'), [qw(bar whatever)], 'right results';
+  is $v->param('foo'), 'whatever', 'right result';
+  is_deeply $v->output, {foo => [qw(bar whatever)]}, 'right result';
+  ok !$v->has_error,                                        'no error';
+  ok !$v->required('baz')->in(qw(yada whatever))->is_valid, 'not valid';
+  is_deeply $v->output, {foo => [qw(bar whatever)]}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('baz'), [qw(in 1 yada whatever)], 'right error';
+  is_deeply $v->failed,       ['baz'],                  'right names';
+};
 
-# Size
-$validation
-  = $t->app->validation->input({foo => 'bar', baz => 'yada', yada => 'yada'});
-ok $validation->required('foo')->size(1, 3)->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok !$validation->has_error, 'no error';
-ok !$validation->required('baz')->size(1, 3)->is_valid, 'not valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('baz'), [qw(size 1 1 3)], 'right error';
-ok !$validation->required('yada')->size(5, 10)->is_valid, 'not valid';
-is $validation->topic, 'yada', 'right topic';
-ok $validation->has_error('baz'), 'has error';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('yada'), [qw(size 1 5 10)], 'right error';
+subtest 'Like' => sub {
+  my $v = $t->app->validation->input({foo => 'bar', baz => 'yada'});
+  ok $v->required('foo')->like(qr/^b/)->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok !$v->has_error, 'no error';
+  my $re = qr/ar$/;
+  ok !$v->required('baz')->like($re)->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('baz'), ['like', 1, $re], 'right error';
+};
 
-# Upload
-$validation = $t->app->validation->input(
-  {
+subtest 'Num' => sub {
+  my $v = $t->app->validation->input({foo => 23, bar => 0, baz => 'fail'});
+  ok $v->required('foo')->num->is_valid, 'valid';
+  is_deeply $v->output, {foo => 23}, 'right result';
+  ok $v->required('bar')->num->is_valid, 'valid';
+  is_deeply $v->output, {foo => 23, bar => 0}, 'right result';
+  ok !$v->has_error,                      'no error';
+  ok !$v->required('baz')->num->is_valid, 'not valid';
+  is_deeply $v->error('baz'), [qw(num 1)], 'right error';
+  is_deeply $v->failed,       ['baz'],     'right names';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(22, 24)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(23, 24)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(22, 23)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok !$v->required('foo')->num(24, 25)->is_valid, 'not valid';
+  ok $v->has_error,                               'has error';
+  is_deeply $v->error('foo'), [qw(num 1 24 25)], 'right error';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(22, undef)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(23, undef)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok !$v->required('foo')->num(24, undef)->is_valid, 'not valid';
+  ok $v->has_error,                                  'has error';
+  is_deeply $v->error('foo'), ['num', 1, 24, undef], 'right error';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(undef, 24)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok $v->required('foo')->num(undef, 23)->is_valid, 'valid';
+  $v = $t->app->validation->input({foo => 23});
+  ok !$v->required('foo')->num(undef, 22)->is_valid, 'not valid';
+  ok $v->has_error,                                  'has error';
+  is_deeply $v->error('foo'), ['num', 1, undef, 22], 'right error';
+  $v = $t->app->validation->input({foo => -5});
+  ok $v->required('foo')->num->is_valid, 'valid';
+  ok $v->required('foo')->num(undef, -1)->is_valid,    'valid';
+  ok $v->required('foo')->num(-10,   10)->is_valid,    'valid';
+  ok $v->required('foo')->num(-20,   undef)->is_valid, 'valid';
+};
+
+subtest 'Size' => sub {
+  my $v = $t->app->validation->input({foo => 'bar', baz => 'yada', yada => 'yada'});
+  ok $v->required('foo')->size(1, 3)->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok !$v->has_error,                             'no error';
+  ok !$v->required('baz')->size(1, 3)->is_valid, 'not valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('baz'), [qw(size 1 1 3)], 'right error';
+  ok !$v->required('yada')->size(5, 10)->is_valid, 'not valid';
+  is $v->topic, 'yada', 'right topic';
+  ok $v->has_error('baz'), 'has error';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('yada'), [qw(size 1 5 10)], 'right error';
+  ok $v->required('foo')->size(1,      undef)->is_valid, 'valid';
+  ok !$v->required('foo')->size(4,     undef)->is_valid, 'not valid';
+  ok $v->required('foo')->size(undef,  4)->is_valid,     'valid';
+  ok $v->required('foo')->size(undef,  3)->is_valid,     'valid';
+  ok !$v->required('foo')->size(undef, 2)->is_valid,     'not valid';
+};
+
+subtest 'Upload' => sub {
+  my $v = $t->app->validation->input({
     foo => Mojo::Upload->new,
     bar => [Mojo::Upload->new, Mojo::Upload->new],
-    baz => [Mojo::Upload->new, 'test']
-  }
-);
-ok $validation->required('foo')->upload->is_valid, 'valid';
-ok $validation->required('bar')->upload->is_valid, 'valid';
-ok $validation->required('baz')->is_valid, 'valid';
-ok !$validation->has_error, 'no error';
-ok !$validation->upload->is_valid, 'not valid';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('baz'), [qw(upload 1)], 'right error';
-is_deeply $validation->failed, ['baz'], 'right names';
+    baz => [Mojo::Upload->new, 'just another test']
+  });
+  ok $v->required('foo')->upload->is_valid, 'valid';
+  ok $v->required('bar')->upload->is_valid, 'valid';
+  ok $v->required('baz')->is_valid,         'valid';
+  ok !$v->has_error,                        'no error';
+  ok !$v->upload->is_valid,                 'not valid';
+  ok $v->has_error,                         'has error';
+  is_deeply $v->error('baz'), [qw(upload 1)], 'right error';
+  is_deeply $v->failed,       ['baz'],        'right names';
+};
 
-# Upload size
-$validation = $t->app->validation->input(
-  {
-    foo => [
-      Mojo::Upload->new(asset => Mojo::Asset::Memory->new->add_chunk('valid'))
-    ],
-    bar => [
-      Mojo::Upload->new(
-        asset => Mojo::Asset::Memory->new->add_chunk('not valid')
-      )
-    ]
-  }
-);
-ok $validation->required('foo')->upload->size(1, 6)->is_valid, 'valid';
-ok !$validation->has_error, 'no error';
-ok !$validation->required('bar')->upload->size(1, 6)->is_valid, 'not valid';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('bar'), [qw(size 1 1 6)], 'right error';
-is_deeply $validation->failed, ['bar'], 'right names';
+subtest 'Upload size' => sub {
+  my $v = $t->app->validation->input({
+    foo => [Mojo::Upload->new(asset => Mojo::Asset::Memory->new->add_chunk('valid'))],
+    bar => [Mojo::Upload->new(asset => Mojo::Asset::Memory->new->add_chunk('not valid'))]
+  });
+  ok $v->required('foo')->upload->size(1, 6)->is_valid,  'valid';
+  ok !$v->has_error,                                     'no error';
+  ok !$v->required('bar')->upload->size(1, 6)->is_valid, 'not valid';
+  ok $v->has_error,                                      'has error';
+  is_deeply $v->error('bar'), [qw(size 1 1 6)], 'right error';
+  is_deeply $v->failed,       ['bar'],          'right names';
+};
 
-# Trim
-$validation = $t->app->validation->input({foo => ' bar', baz => ['  0 ', 1]});
-ok $validation->required('foo', 'trim')->in('bar')->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok !$validation->optional('missing', 'trim')->is_valid, 'not valid';
-ok $validation->optional('baz', 'trim')->like(qr/^\d$/)->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar', baz => [0, 1]}, 'right result';
-$validation = $t->app->validation->input({nothing => '  ', more => [undef]});
-ok !$validation->required('nothing', 'trim')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok $validation->required('nothing')->is_valid, 'valid';
-is_deeply $validation->output, {nothing => '  '}, 'right result';
-ok !$validation->optional('more', 'trim')->is_valid, 'not valid';
-is_deeply $validation->output, {nothing => '  '}, 'right result';
+subtest 'Trim' => sub {
+  my $v = $t->app->validation->input({foo => ' bar', baz => ['  0 ', 1]});
+  ok $v->required('foo', 'trim')->in('bar')->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok !$v->optional('missing', 'trim')->is_valid,                 'not valid';
+  ok $v->optional('baz',      'trim')->like(qr/^\d$/)->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar', baz => [0, 1]}, 'right result';
 
-# Custom filter
-$t->app->validator->add_filter(quote => sub {qq{$_[1]="$_[2]"}});
-$validation = $t->app->validation->input({foo => [' bar', 'baz']});
-ok $validation->required('foo', 'trim', 'quote')->like(qr/"/)->is_valid,
-  'valid';
-is_deeply $validation->output, {foo => ['foo="bar"', 'foo="baz"']},
-  'right result';
+  $v = $t->app->validation->input({nothing => '  ', more => [undef]});
+  ok $v->required('nothing', 'trim')->is_valid, 'valid';
+  is_deeply $v->output, {nothing => ''}, 'right result';
+  ok $v->required('nothing')->is_valid, 'valid';
+  is_deeply $v->output, {nothing => '  '}, 'right result';
+  ok !$v->optional('more', 'trim')->is_valid, 'not valid';
+  is_deeply $v->output, {nothing => '  '}, 'right result';
+};
 
-# Multiple empty values
-$validation = $t->app->validation;
-ok !$validation->has_data, 'no data';
-$validation->input({foo => ['', 'bar', ''], bar => ['', 'baz', '']});
-ok $validation->has_data, 'has data';
-ok !$validation->required('foo')->is_valid, 'not valid';
-is_deeply $validation->output, {}, 'right result';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('foo'), ['required'], 'right error';
+subtest 'Not empty' => sub {
+  my $v = $t->app->validation->input({foo => 'bar', baz => ''});
+  ok $v->required('foo',  'not_empty')->in('bar')->is_valid, 'valid';
+  ok !$v->required('baz', 'not_empty')->is_valid,            'not valid';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('baz'), ['required'], 'right error';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
 
-# "0"
-$validation = $t->app->validation->input({0 => 0});
-ok $validation->has_data, 'has data';
-ok $validation->required(0)->size(1, 1)->is_valid, 'valid';
-is_deeply $validation->output, {0 => 0}, 'right result';
-is $validation->param(0), 0, 'right value';
+  $v = $t->app->validation->input({foo => [' bar'], baz => ['', '  ', undef]});
+  ok $v->optional('foo',  'trim', 'not_empty')->is_valid, 'valid';
+  ok !$v->optional('baz', 'trim', 'not_empty')->is_valid, 'not valid';
+  ok !$v->has_error, 'no error';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+};
 
-# Custom error
-$validation = $t->app->validation->input({foo => 'bar'});
-ok !$validation->required('foo')->has_error, 'no error';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-ok $validation->error(foo => ['custom_check'])->has_error, 'has error';
-is_deeply $validation->output, {}, 'right result';
-is_deeply $validation->size(1, 2)->error('foo'), ['custom_check'],
-  'right error';
+subtest 'Comma separated' => sub {
+  my $v = $t->app->validation->input({foo => 'bar , baz,yada', baz => ['one, two', 'three']});
+  ok $v->required('foo', 'comma_separated')->is_valid, 'valid';
+  is_deeply $v->output, {foo => ['bar', 'baz', 'yada']}, 'right result';
+  ok $v->optional('baz', 'comma_separated')->is_valid, 'valid';
+  is_deeply $v->output, {foo => ['bar', 'baz', 'yada'], baz => ['one', 'two', 'three']}, 'right result';
 
-# CSRF protection
-$validation = $t->app->validation->input({foo => 'bar'})->csrf_protect;
-ok $validation->has_data,  'has data';
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('csrf_token'), ['csrf_protect'], 'right error';
-$validation = $t->app->validation->input({csrf_token => 'abc'});
-ok $validation->has_data, 'has data';
-ok $validation->csrf_protect->has_error, 'has error';
-ok $validation->has_data, 'has data';
-is_deeply $validation->error('csrf_token'), ['csrf_protect'], 'right error';
-$validation = $t->app->validation->input({csrf_token => 'abc', foo => 'bar'})
-  ->csrf_token('cba')->csrf_protect;
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('csrf_token'), ['csrf_protect'], 'right error';
-$validation = $t->app->validation->input({csrf_token => 'abc', foo => 'bar'})
-  ->csrf_token('abc')->csrf_protect;
-ok !$validation->has_error, 'no error';
-ok $validation->required('foo')->is_valid, 'valid';
-is_deeply $validation->output, {foo => 'bar'}, 'right result';
-$validation = $t->app->validation->input({csrf_token => ['abc', 'abc']})
-  ->csrf_token('abc')->csrf_protect;
-ok $validation->has_error, 'has error';
-is_deeply $validation->error('csrf_token'), ['csrf_protect'], 'right error';
+  $v = $t->app->validation->input({foo => ['One,, Two,', 'Three']});
+  ok $v->required('foo', 'comma_separated')->is_valid, 'valid';
+  is_deeply $v->output, {foo => ['One', '', 'Two', '', 'Three']}, 'right result';
 
-# Missing method and function (AUTOLOAD)
-eval { $t->app->validation->missing };
-my $package = 'Mojolicious::Validator::Validation';
-like $@, qr/^Can't locate object method "missing" via package "$package"/,
-  'right error';
-eval { Mojolicious::Validator::Validation::missing() };
-like $@, qr/^Undefined subroutine &${package}::missing called/, 'right error';
+  $v = $t->app->validation->input({foo => ['one,, two,', 'three']});
+  ok $v->required('foo', 'comma_separated', 'trim', 'not_empty')->is_valid, 'valid';
+  is_deeply $v->output, {foo => ['one', 'two', 'three']}, 'right result';
+};
 
-# No validation
-$t->get_ok('/')->status_is(200)->element_exists_not('div:root')
-  ->text_is('label[for="foo"]' => '<Foo>')
-  ->element_exists('input[type="text"]')->element_exists('textarea')
-  ->text_like('label[for="baz"]' => qr/Baz/)->element_exists('select')
-  ->element_exists('input[type="password"]');
+subtest 'Custom filter' => sub {
+  $t->app->validator->add_filter(quote => sub {qq{$_[1]="$_[2]"}});
+  my $v = $t->app->validation->input({foo => [' bar', 'baz']});
+  ok $v->required('foo', 'trim', 'quote')->like(qr/"/)->is_valid, 'valid';
+  is_deeply $v->output, {foo => ['foo="bar"', 'foo="baz"']}, 'right result';
+};
 
-# Successful validation
-$t->get_ok('/' => form => {foo => '☃☃'})->status_is(200)
-  ->element_exists_not('div:root')->text_is('label[for="foo"]' => '<Foo>')
-  ->element_exists('input[type="text"]')->element_exists('textarea')
-  ->text_like('label[for="baz"]' => qr/Baz/)->element_exists('select')
-  ->element_exists('input[type="password"]');
+subtest 'Multiple empty values' => sub {
+  my $v = $t->app->validation;
+  ok !$v->has_data, 'no data';
+  $v->input({foo => ['', 'bar', ''], bar => ['', 'baz', undef]});
+  ok $v->has_data,                   'has data';
+  ok $v->required('foo')->is_valid,  'valid';
+  ok !$v->required('bar')->is_valid, 'not valid';
+  is_deeply $v->output, {foo => ['', 'bar', '']}, 'right result';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('bar'), ['required'], 'right error';
+};
 
-# Validation failed for required fields
-$t->post_ok('/' => form => {foo => 'no'})->status_is(200)
-  ->text_like('div:root' => qr/in.+1/s)
-  ->text_is('label.custom.field-with-error[for="foo"]' => '<Foo>')
-  ->element_exists('input.custom.field-with-error[type="text"][value="no"]')
-  ->element_exists_not('textarea.field-with-error')
-  ->element_exists_not('label.custom.field-with-error[for="baz"]')
-  ->element_exists_not('select.field-with-error')
-  ->element_exists_not('input.field-with-error[type="password"]')
-  ->element_count_is('.field-with-error', 2)
-  ->element_count_is('.field-with-error', 2, 'with description');
+subtest '0' => sub {
+  my $v = $t->app->validation->input({0 => 0});
+  ok $v->has_data,                          'has data';
+  ok $v->required(0)->size(1, 1)->is_valid, 'valid';
+  is_deeply $v->output, {0 => 0}, 'right result';
+  is $v->param(0), 0, 'right value';
+};
 
-# Successful file upload
-$t->post_ok(
-  '/upload' => form => {foo => {content => 'bar', filename => 'test.txt'}})
-  ->element_exists_not('.field-with-error');
+subtest 'Custom error' => sub {
+  my $v = $t->app->validation->input({foo => 'bar'});
+  ok !$v->required('foo')->has_error, 'no error';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  ok $v->error(foo => ['custom_check'])->has_error, 'has error';
+  is_deeply $v->output, {}, 'right result';
+  is_deeply $v->size(1, 2)->error('foo'), ['custom_check'], 'right error';
+};
 
-# Successful file upload (multiple files)
-$t->post_ok(
-  '/upload' => form => {
-    foo => [
-      {content => 'One', filename => 'one.txt'},
-      {content => 'Two', filename => 'two.txt'}
-    ]
-  }
-)->element_exists_not('.field-with-error');
+subtest 'CSRF protection' => sub {
+  my $v = $t->app->validation->input({foo => 'bar'})->csrf_protect;
+  ok $v->has_data,  'has data';
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('csrf_token'), ['csrf_protect'], 'right error';
+  $v = $t->app->validation->input({csrf_token => 'abc'});
+  ok $v->has_data,                'has data';
+  ok $v->csrf_protect->has_error, 'has error';
+  ok $v->has_data,                'has data';
+  is_deeply $v->error('csrf_token'), ['csrf_protect'], 'right error';
+  $v = $t->app->validation->input({csrf_token => 'abc', foo => 'bar'})->csrf_token('cba')->csrf_protect;
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('csrf_token'), ['csrf_protect'], 'right error';
+  $v = $t->app->validation->input({csrf_token => 'abc', foo => 'bar'})->csrf_token('abc')->csrf_protect;
+  ok !$v->has_error,                'no error';
+  ok $v->required('foo')->is_valid, 'valid';
+  is_deeply $v->output, {foo => 'bar'}, 'right result';
+  $v = $t->app->validation->input({csrf_token => ['abc', 'abc']})->csrf_token('abc')->csrf_protect;
+  ok $v->has_error, 'has error';
+  is_deeply $v->error('csrf_token'), ['csrf_protect'], 'right error';
+};
 
-# Failed file upload
-$t->post_ok('/upload' => form => {foo => 'bar'})
-  ->element_exists('.field-with-error');
+subtest 'Missing method and function (AUTOLOAD)' => sub {
+  eval { $t->app->validation->missing };
+  my $package = 'Mojolicious::Validator::Validation';
+  like $@, qr/^Can't locate object method "missing" via package "$package"/, 'right error';
+  eval { Mojolicious::Validator::Validation::missing() };
+  like $@, qr/^Undefined subroutine &${package}::missing called/, 'right error';
+};
 
-# Failed file upload (multiple files)
-$t->post_ok('/upload' => form => {foo => ['one', 'two']})
-  ->element_exists('.field-with-error');
+subtest 'No validation' => sub {
+  $t->get_ok('/')->status_is(200)->element_exists_not('div:root')->text_is('label[for="foo"]' => '<Foo>')
+    ->element_exists('input[type="text"]')->element_exists('textarea')->text_like('label[for="baz"]' => qr/Baz/)
+    ->element_exists('select')->element_exists('input[type="password"]');
+};
 
-# Missing CSRF token
-$t->get_ok('/forgery' => form => {foo => 'bar'})->status_is(200)
-  ->content_like(qr/Wrong or missing CSRF token!/)
-  ->element_exists('[value=bar]')->element_exists_not('.field-with-error');
+subtest 'Successful validation' => sub {
+  $t->get_ok('/' => form => {foo => '☃☃'})->status_is(200)->element_exists_not('div:root')
+    ->text_is('label[for="foo"]' => '<Foo>')->element_exists('input[type="text"]')->element_exists('textarea')
+    ->text_like('label[for="baz"]' => qr/Baz/)->element_exists('select')->element_exists('input[type="password"]');
+};
 
-# Correct CSRF token
-my $token = $t->ua->get('/forgery')->res->dom->at('[name=csrf_token]')->val;
-$t->post_ok('/forgery' => form => {csrf_token => $token, foo => 'bar'})
-  ->status_is(200)->content_unlike(qr/Wrong or missing CSRF token!/)
-  ->element_exists('[value=bar]')->element_exists_not('.field-with-error')
-  ->element_count_is('[name=csrf_token]', 2)->element_count_is('form', 2)
-  ->element_exists('form > input[name=csrf_token] + input[type=submit]');
-is $t->tx->res->dom->find('[name=csrf_token]')->[0]->val,
-  $t->tx->res->dom->find('[name=csrf_token]')->[1]->val, 'same token';
+subtest 'Validation failed for required fields' => sub {
+  $t->post_ok('/' => form => {foo => 'no'})->status_is(200)->text_like('div:root' => qr/in.+1/s)
+    ->text_is('label.custom.field-with-error[for="foo"]' => '<Foo>')
+    ->element_exists('input.custom.field-with-error[type="text"][value="no"]')
+    ->element_exists_not('textarea.field-with-error')->element_exists_not('label.custom.field-with-error[for="baz"]')
+    ->element_exists_not('select.field-with-error')->element_exists_not('input.field-with-error[type="password"]')
+    ->element_count_is('.field-with-error', 2)->element_count_is('.field-with-error', 2, 'with description');
+};
 
-# Correct CSRF token (header)
-$t->post_ok('/forgery' => {'X-CSRF-Token' => $token} => form => {foo => 'bar'})
-  ->status_is(200)->content_unlike(qr/Wrong or missing CSRF token!/)
-  ->element_exists('[value=bar]')->element_exists_not('.field-with-error');
+subtest 'Successful file upload' => sub {
+  $t->post_ok('/upload' => form => {foo => {content => 'bar', filename => 'test.txt'}})
+    ->element_exists_not('.field-with-error');
+};
 
-# Wrong CSRF token (header)
-$t->post_ok('/forgery' => {'X-CSRF-Token' => 'abc'} => form => {foo => 'bar'})
-  ->status_is(200)->content_like(qr/Wrong or missing CSRF token!/)
-  ->element_exists('[value=bar]')->element_exists_not('.field-with-error');
+subtest 'Successful file upload (multiple files)' => sub {
+  $t->post_ok(
+    '/upload' => form => {
+      foo => [
+        {content => 'First test file content',  filename => 'one.txt'},
+        {content => 'Second test file content', filename => 'two.txt'}
+      ]
+    }
+  )->element_exists_not('.field-with-error');
+};
 
-# Missing CSRF token and form
-$t->get_ok('/forgery')->status_is(200)
-  ->content_unlike(qr/Wrong or missing CSRF token!/)
-  ->element_exists_not('.field-with-error');
+subtest 'Failed file upload' => sub {
+  $t->post_ok('/upload' => form => {foo => 'bar'})->element_exists('.field-with-error');
+};
 
-# Correct CSRF token and missing form
-$t->post_ok('/forgery' => {'X-CSRF-Token' => $token})->status_is(200)
-  ->content_unlike(qr/Wrong or missing CSRF token!/)
-  ->element_exists('.field-with-error');
+subtest 'Failed file upload (multiple files)' => sub {
+  $t->post_ok('/upload' => form => {foo => ['one', 'two']})->element_exists('.field-with-error');
+};
 
-# Failed validation for all fields (with custom helper)
-$t->app->helper(
-  tag_with_error => sub {
-    my ($c, $tag) = (shift, shift);
-    my ($content, %attrs) = (@_ % 2 ? pop : undef, @_);
-    $attrs{class}
-      .= $attrs{class} ? ' my-field-with-error' : 'my-field-with-error';
-    return $c->tag($tag, %attrs, defined $content ? $content : ());
-  }
-);
-$t->get_ok('/?foo=too_long&bar=too_long_too&baz=way_too_long&yada=whatever')
-  ->status_is(200)->text_like('div:root' => qr/two.+e:foo/s)
-  ->text_is('label.custom.my-field-with-error[for="foo"]' => '<Foo>')
-  ->element_exists('input.custom.my-field-with-error[type="text"]')
-  ->element_exists('textarea.my-field-with-error')
-  ->text_like('label.custom.my-field-with-error[for="baz"]' => qr/Baz/)
-  ->element_exists('select.my-field-with-error')
-  ->element_exists('input.my-field-with-error[type="password"]');
+subtest 'Missing CSRF token' => sub {
+  $t->get_ok('/forgery' => form => {foo => 'bar'})->status_is(200)->content_like(qr/Wrong or missing CSRF token!/)
+    ->element_exists('[value=bar]')->element_exists_not('.field-with-error');
+};
+
+subtest 'Correct CSRF token' => sub {
+  my $token = $t->ua->get('/forgery')->res->dom->at('[name=csrf_token]')->val;
+  $t->post_ok('/forgery' => form => {csrf_token => $token, foo => 'bar'})->status_is(200)
+    ->content_unlike(qr/Wrong or missing CSRF token!/)->element_exists('[value=bar]')
+    ->element_exists_not('.field-with-error')->element_count_is('[name=csrf_token]', 2)->element_count_is('form', 2)
+    ->element_exists('form > input[name=csrf_token] + input[type=submit]');
+  is $t->tx->res->dom->find('[name=csrf_token]')->[0]->val, $t->tx->res->dom->find('[name=csrf_token]')->[1]->val,
+    'same token';
+};
+
+subtest 'Correct CSRF token (header)' => sub {
+  my $token = $t->ua->get('/forgery')->res->dom->at('[name=csrf_token]')->val;
+  $t->post_ok('/forgery' => {'X-CSRF-Token' => $token} => form => {foo => 'bar'})->status_is(200)
+    ->content_unlike(qr/Wrong or missing CSRF token!/)->element_exists('[value=bar]')
+    ->element_exists_not('.field-with-error');
+};
+
+subtest 'Wrong CSRF token (header)' => sub {
+  $t->post_ok('/forgery' => {'X-CSRF-Token' => 'abc'} => form => {foo => 'bar'})->status_is(200)
+    ->content_like(qr/Wrong or missing CSRF token!/)->element_exists('[value=bar]')
+    ->element_exists_not('.field-with-error');
+};
+
+subtest 'Missing CSRF token and form' => sub {
+  $t->get_ok('/forgery')->status_is(200)->content_unlike(qr/Wrong or missing CSRF token!/)
+    ->element_exists_not('.field-with-error');
+};
+
+subtest 'Correct CSRF token and missing form' => sub {
+  my $token = $t->ua->get('/forgery')->res->dom->at('[name=csrf_token]')->val;
+  $t->post_ok('/forgery' => {'X-CSRF-Token' => $token})->status_is(200)
+    ->content_unlike(qr/Wrong or missing CSRF token!/)->element_exists('.field-with-error');
+};
+
+subtest 'Failed validation for all fields (with custom helper)' => sub {
+  $t->app->helper(
+    tag_with_error => sub {
+      my ($c, $tag) = (shift, shift);
+      my ($content, %attrs) = (@_ % 2 ? pop : undef, @_);
+      $attrs{class} .= $attrs{class} ? ' my-field-with-error' : 'my-field-with-error';
+      return $c->tag($tag, %attrs, defined $content ? $content : ());
+    }
+  );
+  $t->get_ok('/?foo=too_long&bar=too_long_too&baz=way_too_long&yada=whatever')->status_is(200)
+    ->text_like('div:root' => qr/two.+e:foo/s)->text_is('label.custom.my-field-with-error[for="foo"]' => '<Foo>')
+    ->element_exists('input.custom.my-field-with-error[type="text"]')->element_exists('textarea.my-field-with-error')
+    ->text_like('label.custom.my-field-with-error[for="baz"]' => qr/Baz/)->element_exists('select.my-field-with-error')
+    ->element_exists('input.my-field-with-error[type="password"]');
+};
 
 done_testing();
 

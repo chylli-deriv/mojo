@@ -3,16 +3,16 @@ use Mojo::Base 'Mojo::Message';
 
 use Mojo::Cookie::Response;
 use Mojo::Date;
-use Mojo::Util 'deprecated';
 
 has [qw(code message)];
 has max_message_size => sub { $ENV{MOJO_MAX_MESSAGE_SIZE} // 2147483648 };
 
-# Umarked codes are from RFC 7231
+# Unmarked codes are from RFC 7231
 my %MESSAGES = (
   100 => 'Continue',
   101 => 'Switching Protocols',
   102 => 'Processing',                         # RFC 2518 (WebDAV)
+  103 => 'Early Hints',                        # RFC 8297
   200 => 'OK',
   201 => 'Created',
   202 => 'Accepted',
@@ -50,10 +50,11 @@ my %MESSAGES = (
   416 => 'Request Range Not Satisfiable',
   417 => 'Expectation Failed',
   418 => "I'm a teapot",                       # RFC 2324 :)
+  421 => 'Misdirected Request',                # RFC 7540
   422 => 'Unprocessable Entity',               # RFC 2518 (WebDAV)
   423 => 'Locked',                             # RFC 2518 (WebDAV)
   424 => 'Failed Dependency',                  # RFC 2518 (WebDAV)
-  425 => 'Unordered Colection',                # RFC 3648 (WebDAV)
+  425 => 'Too Early',                          # RFC 8470
   426 => 'Upgrade Required',                   # RFC 2817
   428 => 'Precondition Required',              # RFC 6585
   429 => 'Too Many Requests',                  # RFC 6585
@@ -81,8 +82,7 @@ sub cookies {
   return [@{Mojo::Cookie::Response->parse($headers->set_cookie)}] unless @_;
 
   # Add cookies
-  $headers->add('Set-Cookie' => "$_")
-    for map { ref $_ eq 'HASH' ? Mojo::Cookie::Response->new($_) : $_ } @_;
+  $headers->add('Set-Cookie' => "$_") for map { ref $_ eq 'HASH' ? Mojo::Cookie::Response->new($_) : $_ } @_;
 
   return $self;
 }
@@ -93,14 +93,12 @@ sub extract_start_line {
   my ($self, $bufref) = @_;
 
   # We have a full response line
-  return undef unless $$bufref =~ s/^(.*?)\x0d?\x0a//;
-  return !$self->error({message => 'Bad response start-line'})
-    unless $1 =~ m!^\s*HTTP/(\d\.\d)\s+(\d\d\d)\s*(.+)?$!;
+  return undef                                                 unless $$bufref =~ s/^(.*?)\x0d?\x0a//;
+  return !$self->error({message => 'Bad response start-line'}) unless $1 =~ m!^\s*HTTP/(\d\.\d)\s+(\d\d\d)\s*(.+)?$!;
 
   my $content = $self->content;
   $content->skip_body(1) if $self->code($2)->is_empty;
   defined $content->$_ or $content->$_(1) for qw(auto_decompress auto_relax);
-  $content->expect_close(1) if $1 eq '1.0';
   return !!$self->version($1)->message($3);
 }
 
@@ -111,6 +109,9 @@ sub fix_headers {
   # Date
   my $headers = $self->headers;
   $headers->date(Mojo::Date->new->to_string) unless $headers->date;
+
+  # RFC 7230 3.3.2
+  $headers->remove('Content-Length') if $self->is_empty;
 
   return $self;
 }
@@ -129,17 +130,10 @@ sub is_empty {
   return $self->is_info || $code == 204 || $code == 304;
 }
 
-sub is_error { shift->_status_class(400, 500) }
-sub is_info { shift->_status_class(100) }
+sub is_error        { shift->_status_class(400, 500) }
+sub is_info         { shift->_status_class(100) }
 sub is_redirect     { shift->_status_class(300) }
 sub is_server_error { shift->_status_class(500) }
-
-# DEPRECATED!
-sub is_status_class {
-  deprecated 'Mojo::Message::Response::is_status_class is DEPRECATED'
-    . ' in favor of new is_* methods';
-  shift->_status_class(@_);
-}
 
 sub is_success { shift->_status_class(200) }
 
@@ -193,9 +187,8 @@ Mojo::Message::Response - HTTP response
 
 =head1 DESCRIPTION
 
-L<Mojo::Message::Response> is a container for HTTP responses, based on
-L<RFC 7230|http://tools.ietf.org/html/rfc7230> and
-L<RFC 7231|http://tools.ietf.org/html/rfc7231>.
+L<Mojo::Message::Response> is a container for HTTP responses, based on L<RFC 7230|https://tools.ietf.org/html/rfc7230>
+and L<RFC 7231|https://tools.ietf.org/html/rfc7231>.
 
 =head1 EVENTS
 
@@ -203,8 +196,7 @@ L<Mojo::Message::Response> inherits all events from L<Mojo::Message>.
 
 =head1 ATTRIBUTES
 
-L<Mojo::Message::Response> inherits all attributes from L<Mojo::Message> and
-implements the following new ones.
+L<Mojo::Message::Response> inherits all attributes from L<Mojo::Message> and implements the following new ones.
 
 =head2 code
 
@@ -218,9 +210,8 @@ HTTP response status code.
   my $size = $res->max_message_size;
   $res     = $res->max_message_size(1024);
 
-Maximum message size in bytes, defaults to the value of the
-C<MOJO_MAX_MESSAGE_SIZE> environment variable or C<2147483648> (2GB). Setting
-the value to C<0> will allow messages of indefinite size.
+Maximum message size in bytes, defaults to the value of the C<MOJO_MAX_MESSAGE_SIZE> environment variable or
+C<2147483648> (2GiB). Setting the value to C<0> will allow messages of indefinite size.
 
 =head2 message
 
@@ -231,8 +222,7 @@ HTTP response status message.
 
 =head1 METHODS
 
-L<Mojo::Message::Response> inherits all methods from L<Mojo::Message> and
-implements the following new ones.
+L<Mojo::Message::Response> inherits all methods from L<Mojo::Message> and implements the following new ones.
 
 =head2 cookies
 
@@ -250,8 +240,7 @@ Access response cookies, usually L<Mojo::Cookie::Response> objects.
   my $msg = $res->default_message;
   my $msg = $res->default_message(418);
 
-Generate default response message for status code, defaults to using
-L</"code">.
+Generate default response message for status code, defaults to using L</"code">.
 
 =head2 extract_start_line
 
@@ -269,8 +258,7 @@ Make sure response has all required headers.
 
   my $bytes = $res->get_start_line_chunk($offset);
 
-Get a chunk of status-line data starting from a specific position. Note that
-this method finalizes the response.
+Get a chunk of status-line data starting from a specific position. Note that this method finalizes the response.
 
 =head2 is_client_error
 
@@ -322,6 +310,6 @@ Size of the status-line in bytes. Note that this method finalizes the response.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

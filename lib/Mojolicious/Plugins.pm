@@ -1,8 +1,8 @@
 package Mojolicious::Plugins;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Mojo::Loader 'load_class';
-use Mojo::Util 'camelize';
+use Mojo::Loader qw(load_class);
+use Mojo::Util   qw(camelize);
 
 has namespaces => sub { ['Mojolicious::Plugin'] };
 
@@ -34,7 +34,7 @@ sub load_plugin {
   my ($self, $name) = @_;
 
   # Try all namespaces and full module name
-  my $suffix = $name =~ /^[a-z]/ ? camelize $name : $name;
+  my $suffix  = $name =~ /^[a-z]/ ? camelize $name : $name;
   my @classes = map {"${_}::$suffix"} @{$self->namespaces};
   for my $class (@classes, $name) { return $class->new if _load($class) }
 
@@ -42,9 +42,7 @@ sub load_plugin {
   die qq{Plugin "$name" missing, maybe you need to install it?\n};
 }
 
-sub register_plugin {
-  shift->load_plugin(shift)->register(shift, ref $_[0] ? $_[0] : {@_});
-}
+sub register_plugin { shift->load_plugin(shift)->register(shift, ref $_[0] ? $_[0] : {@_}) }
 
 sub _load {
   my $module = shift;
@@ -73,8 +71,7 @@ L<Mojolicious::Plugins> is the plugin manager of L<Mojolicious>.
 
 =head1 PLUGINS
 
-The following plugins are included in the L<Mojolicious> distribution as
-examples.
+The following plugins are included in the L<Mojolicious> distribution as examples.
 
 =over 2
 
@@ -106,10 +103,9 @@ JSON configuration files.
 
 Mount whole L<Mojolicious> applications.
 
-=item L<Mojolicious::Plugin::PODRenderer>
+=item L<Mojolicious::Plugin::NotYAMLConfig>
 
-Renderer for turning POD into HTML and documentation browser for
-L<Mojolicious::Guides>.
+YAML configuration files.
 
 =item L<Mojolicious::Plugin::TagHelpers>
 
@@ -137,8 +133,7 @@ Namespaces to load plugins from, defaults to L<Mojolicious::Plugin>.
 
 =head1 METHODS
 
-L<Mojolicious::Plugins> inherits all methods from L<Mojo::EventEmitter> and
-implements the following new ones.
+L<Mojolicious::Plugins> inherits all methods from L<Mojo::EventEmitter> and implements the following new ones.
 
 =head2 emit_chain
 
@@ -183,11 +178,11 @@ Load a plugin from the configured namespaces or by full module name.
   $plugins->register_plugin(
     'MyApp::Plugin::SomeThing', Mojolicious->new, {foo => 23});
 
-Load a plugin from the configured namespaces or by full module name and run
-C<register>, optional arguments are passed through.
+Load a plugin from the configured namespaces or by full module name and run C<register>, optional arguments are passed
+through.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

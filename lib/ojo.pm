@@ -1,12 +1,13 @@
 package ojo;
 use Mojo::Base -strict;
 
-use Benchmark qw(timeit timestr :hireswallclock);
-use Mojo::ByteStream 'b';
-use Mojo::Collection 'c';
+use Benchmark        qw(timeit timestr :hireswallclock);
+use Mojo::ByteStream qw(b);
+use Mojo::Collection qw(c);
 use Mojo::DOM;
-use Mojo::File 'path';
-use Mojo::JSON 'j';
+use Mojo::File qw(path);
+use Mojo::JSON qw(j);
+use Mojo::URL;
 use Mojo::Util qw(dumper monkey_patch);
 
 # Silent one-liners
@@ -17,11 +18,12 @@ sub import {
   # Mojolicious::Lite
   my $caller = caller;
   eval "package $caller; use Mojolicious::Lite; 1" or die $@;
+  Mojo::Base->import(-strict, $] < 5.020 ? () : (-signatures));
   my $ua = $caller->app->ua;
   $ua->server->app->hook(around_action => sub { local $_ = $_[1]; $_[0]() });
 
   $ua->max_redirects(10) unless defined $ENV{MOJO_MAX_REDIRECTS};
-  $ua->proxy->detect unless defined $ENV{MOJO_PROXY};
+  $ua->proxy->detect     unless defined $ENV{MOJO_PROXY};
 
   # The ojo DSL
   monkey_patch $caller,
@@ -33,9 +35,10 @@ sub import {
     g => sub { $ua->get(@_)->result },
     h => sub { $ua->head(@_)->result },
     j => \&j,
+    l => sub { Mojo::URL->new(@_) },
     n => sub (&@) { say STDERR timestr timeit($_[1] // 1, $_[0]) },
-    o => sub      { $ua->options(@_)->result },
-    p => sub      { $ua->post(@_)->result },
+    o => sub { $ua->options(@_)->result },
+    p => sub { $ua->post(@_)->result },
     r => \&dumper,
     t => sub { $ua->patch(@_)->result },
     u => sub { $ua->put(@_)->result },
@@ -56,23 +59,28 @@ ojo - Fun one-liners with Mojo
 
 =head1 DESCRIPTION
 
-A collection of automatically exported functions for fun Perl one-liners. Ten
-redirects will be followed by default, you can change this behavior with the
-C<MOJO_MAX_REDIRECTS> environment variable.
+A collection of automatically exported functions for fun Perl one-liners. Ten redirects will be followed by default,
+you can change this behavior with the C<MOJO_MAX_REDIRECTS> environment variable.
 
   $ MOJO_MAX_REDIRECTS=0 perl -Mojo -E 'say g("example.com")->code'
 
-Proxy detection is enabled by default, but you can disable it with the
-C<MOJO_PROXY> environment variable.
+Proxy detection is enabled by default, but you can disable it with the C<MOJO_PROXY> environment variable.
 
   $ MOJO_PROXY=0 perl -Mojo -E 'say g("example.com")->body'
+
+TLS certificate verification can be disabled with the C<MOJO_INSECURE> environment variable.
+
+  $ MOJO_INSECURE=1 perl -Mojo -E 'say g("https://127.0.0.1:3000")->body'
 
 Every L<ojo> one-liner is also a L<Mojolicious::Lite> application.
 
   $ perl -Mojo -E 'get "/" => {inline => "%= time"}; app->start' get /
 
-If it is not already defined, the C<MOJO_LOG_LEVEL> environment variable will
-be set to C<fatal>.
+On Perl 5.20+ L<subroutine signatures|perlsub/"Signatures"> will be enabled automatically.
+
+  $ perl -Mojo -E 'a(sub ($c) { $c->render(text => "Hello!") })->start' get /
+
+If it is not already defined, the C<MOJO_LOG_LEVEL> environment variable will be set to C<fatal>.
 
 =head1 FUNCTIONS
 
@@ -82,9 +90,8 @@ L<ojo> implements the following functions, which are automatically exported.
 
   my $app = a('/hello' => sub { $_->render(json => {hello => 'world'}) });
 
-Create a route with L<Mojolicious::Lite/"any"> and return the current
-L<Mojolicious::Lite> object. The current controller object is also available to
-actions as C<$_>. See also L<Mojolicious::Guides::Tutorial> for more argument
+Create a route with L<Mojolicious::Lite/"any"> and return the current L<Mojolicious::Lite> object. The current
+controller object is also available to actions as C<$_>. See also L<Mojolicious::Guides::Tutorial> for more argument
 variations.
 
   $ perl -Mojo -E 'a("/hello" => {text => "Hello Mojo!"})->start' daemon
@@ -110,8 +117,7 @@ Turn list into a L<Mojo::Collection> object.
   my $res = d('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = d('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<DELETE> request with L<Mojo::UserAgent/"delete"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<DELETE> request with L<Mojo::UserAgent/"delete"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 f
 
@@ -128,8 +134,7 @@ Turn string into a L<Mojo::File> object.
   my $res = g('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = g('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<GET> request with L<Mojo::UserAgent/"get"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<GET> request with L<Mojo::UserAgent/"get"> and return resulting L<Mojo::Message::Response> object.
 
   $ perl -Mojo -E 'say g("mojolicious.org")->dom("h1")->map("text")->join("\n")'
 
@@ -140,8 +145,7 @@ L<Mojo::Message::Response> object.
   my $res = h('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = h('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<HEAD> request with L<Mojo::UserAgent/"head"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<HEAD> request with L<Mojo::UserAgent/"head"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 j
 
@@ -151,15 +155,22 @@ L<Mojo::Message::Response> object.
 
 Encode Perl data structure or decode JSON with L<Mojo::JSON/"j">.
 
-  $ perl -Mojo -E 'f("hello.json")->spurt(j {hello => "world!"})'
+  $ perl -Mojo -E 'f("hello.json")->spew(j {hello => "world!"})'
+
+=head2 l
+
+  my $url = l('https://mojolicious.org');
+
+Turn a string into a L<Mojo::URL> object.
+
+  $ perl -Mojo -E 'say l("/perldoc")->to_abs(l("https://mojolicious.org"))'
 
 =head2 n
 
   n {...};
   n {...} 100;
 
-Benchmark block and print the results to C<STDERR>, with an optional number of
-iterations, which defaults to C<1>.
+Benchmark block and print the results to C<STDERR>, with an optional number of iterations, which defaults to C<1>.
 
   $ perl -Mojo -E 'n { say g("mojolicious.org")->code }'
 
@@ -170,8 +181,7 @@ iterations, which defaults to C<1>.
   my $res = o('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = o('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<OPTIONS> request with L<Mojo::UserAgent/"options"> and return
-resulting L<Mojo::Message::Response> object.
+Perform C<OPTIONS> request with L<Mojo::UserAgent/"options"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 p
 
@@ -180,8 +190,7 @@ resulting L<Mojo::Message::Response> object.
   my $res = p('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = p('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<POST> request with L<Mojo::UserAgent/"post"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<POST> request with L<Mojo::UserAgent/"post"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 r
 
@@ -198,8 +207,7 @@ Dump a Perl data structure with L<Mojo::Util/"dumper">.
   my $res = t('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = t('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<PATCH> request with L<Mojo::UserAgent/"patch"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<PATCH> request with L<Mojo::UserAgent/"patch"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 u
 
@@ -208,8 +216,7 @@ L<Mojo::Message::Response> object.
   my $res = u('http://example.com' => {Accept => '*/*'} => form => {a => 'b'});
   my $res = u('http://example.com' => {Accept => '*/*'} => json => {a => 'b'});
 
-Perform C<PUT> request with L<Mojo::UserAgent/"put"> and return resulting
-L<Mojo::Message::Response> object.
+Perform C<PUT> request with L<Mojo::UserAgent/"put"> and return resulting L<Mojo::Message::Response> object.
 
 =head2 x
 
@@ -221,6 +228,6 @@ Turn HTML/XML input into L<Mojo::DOM> object.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

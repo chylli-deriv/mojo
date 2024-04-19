@@ -9,7 +9,8 @@ app->defaults(secret => 'Insecure!');
 helper same_name => sub {'myapp'};
 
 # Load plugin
-plugin 'Config';
+my $config = plugin 'Config';
+my $one    = $config->{one};
 
 # Message condition
 app->routes->add_condition(
@@ -21,6 +22,8 @@ app->routes->add_condition(
 );
 
 get '/' => 'index';
+
+get '/startup' => {text => $one};
 
 get '/echo' => sub {
   my $c = shift;
@@ -51,7 +54,10 @@ get '/one' => sub { shift->render(text => 'One') };
 
 get '/one/two' => {text => 'Two'};
 
-get '/template/:template';
+get '/template/:foo' => sub {
+  my $c = shift;
+  $c->render($c->param('foo'));
+};
 
 websocket '/url_for' => sub {
   my $c = shift;
@@ -68,4 +74,4 @@ __DATA__
 
 @@ menubar.html.ep
 %= same_name
-<%= $config->{just} %><%= $config->{one} %><%= $config->{two} %>
+<%= config->{just} %><%= config->{one} %><%= config->{two} %>

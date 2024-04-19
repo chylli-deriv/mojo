@@ -1,12 +1,13 @@
 package Mojo::Transaction;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp 'croak';
+use Carp       qw(croak);
+use List::Util qw(any);
 use Mojo::Message::Request;
 use Mojo::Message::Response;
+use Mojo::Util qw(network_contains);
 
-has [
-  qw(kept_alive local_address local_port original_remote_address remote_port)];
+has [qw(kept_alive local_address local_port original_remote_address remote_port)];
 has req => sub { Mojo::Message::Request->new };
 has res => sub { Mojo::Message::Response->new };
 
@@ -36,9 +37,15 @@ sub remote_address {
   return $self->original_remote_address unless $self->req->reverse_proxy;
 
   # Reverse proxy
-  return ($self->req->headers->header('X-Forwarded-For') // '') =~ /([^,\s]+)$/
-    ? $1
-    : $self->original_remote_address;
+  my @addrs   = split /\s*,\s*/, ($self->req->headers->header('X-Forwarded-For') // '');
+  my $trusted = $self->req->trusted_proxies;
+  return @addrs ? $addrs[-1] : $self->original_remote_address unless @$trusted;
+
+  push @addrs, $self->original_remote_address;
+  for my $addr (reverse @addrs) {
+    return $addr unless any { network_contains($_, $addr) } @$trusted;
+  }
+  return $addrs[0];
 }
 
 sub result {
@@ -49,8 +56,6 @@ sub result {
 
 sub server_read  { croak 'Method "server_read" not implemented by subclass' }
 sub server_write { croak 'Method "server_write" not implemented by subclass' }
-
-sub success { $_[0]->error ? undef : $_[0]->res }
 
 1;
 
@@ -72,29 +77,22 @@ Mojo::Transaction - Transaction base class
 
 =head1 DESCRIPTION
 
-L<Mojo::Transaction> is an abstract base class for transactions, like
-L<Mojo::Transaction::HTTP> and L<Mojo::Transaction::WebSocket>.
+L<Mojo::Transaction> is an abstract base class for transactions, like L<Mojo::Transaction::HTTP> and
+L<Mojo::Transaction::WebSocket>.
 
 =head1 EVENTS
 
-L<Mojo::Transaction> inherits all events from L<Mojo::EventEmitter> and can
-emit the following new ones.
+L<Mojo::Transaction> inherits all events from L<Mojo::EventEmitter> and can emit the following new ones.
 
 =head2 connection
 
-  $tx->on(connection => sub {
-    my ($tx, $connection) = @_;
-    ...
-  });
+  $tx->on(connection => sub ($tx, $connection) {...});
 
 Emitted when a connection has been assigned to transaction.
 
 =head2 finish
 
-  $tx->on(finish => sub {
-    my $tx = shift;
-    ...
-  });
+  $tx->on(finish => sub ($tx) {...});
 
 Emitted when transaction is finished.
 
@@ -181,29 +179,25 @@ HTTP response, defaults to a L<Mojo::Message::Response> object.
 
 =head1 METHODS
 
-L<Mojo::Transaction> inherits all methods from L<Mojo::EventEmitter> and
-implements the following new ones.
+L<Mojo::Transaction> inherits all methods from L<Mojo::EventEmitter> and implements the following new ones.
 
 =head2 client_read
 
   $tx->client_read($bytes);
 
-Read data client-side, used to implement user agents such as L<Mojo::UserAgent>.
-Meant to be overloaded in a subclass.
+Read data client-side, used to implement user agents such as L<Mojo::UserAgent>. Meant to be overloaded in a subclass.
 
 =head2 client_write
 
   my $bytes = $tx->client_write;
 
-Write data client-side, used to implement user agents such as
-L<Mojo::UserAgent>. Meant to be overloaded in a subclass.
+Write data client-side, used to implement user agents such as L<Mojo::UserAgent>. Meant to be overloaded in a subclass.
 
 =head2 closed
 
   $tx = $tx->closed;
 
-Same as L</"completed">, but also indicates that all transaction data has been
-sent.
+Same as L</"completed">, but also indicates that all transaction data has been sent.
 
 =head2 completed
 
@@ -222,8 +216,7 @@ Connection identifier.
 
   my $err = $tx->error;
 
-Get request or response error and return C<undef> if there is no error,
-commonly used together with L</"success">.
+Get request or response error and return C<undef> if there is no error.
 
   # Longer version
   my $err = $tx->req->error || $tx->res->error;
@@ -251,16 +244,17 @@ False, this is not a L<Mojo::Transaction::WebSocket> object.
   my $address = $tx->remote_address;
   $tx         = $tx->remote_address('127.0.0.1');
 
-Same as L</"original_remote_address"> or the last value of the
-C<X-Forwarded-For> header if L</"req"> has been performed through a reverse
-proxy.
+Same as L</"original_remote_address"> unless L</"req"> has been performed via a L<Mojo::Message::Request/reverse_proxy>.
+If so then the last value of C<X-Forwarded-For> header is returned. Additionally if
+L<Mojo::Message::Request/trusted_proxies> are also provided then the original address must be trusted and any
+C<X-Forwarded-For> entries that are trusted are ignored, returning the last untrusted address or the first address if
+all are trusted.
 
 =head2 result
 
   my $res = $tx->result;
 
-Returns the L<Mojo::Message::Response> object from L</"res"> or dies if a
-connection error has occurred.
+Returns the L<Mojo::Message::Response> object from L</"res"> or dies if a connection error has occurred.
 
   # Fine grained response handling (dies on connection errors)
   my $res = $tx->result;
@@ -273,34 +267,18 @@ connection error has occurred.
 
   $tx->server_read($bytes);
 
-Read data server-side, used to implement web servers such as
-L<Mojo::Server::Daemon>. Meant to be overloaded in a subclass.
+Read data server-side, used to implement web servers such as L<Mojo::Server::Daemon>. Meant to be overloaded in a
+subclass.
 
 =head2 server_write
 
   my $bytes = $tx->server_write;
 
-Write data server-side, used to implement web servers such as
-L<Mojo::Server::Daemon>. Meant to be overloaded in a subclass.
-
-=head2 success
-
-  my $res = $tx->success;
-
-Returns the L<Mojo::Message::Response> object from L</"res"> if transaction was
-successful or C<undef> otherwise. Connection and parser errors have only a
-message in L</"error">, C<400> and C<500> responses also a code.
-
-  # Manual exception handling
-  if (my $res = $tx->success) { say $res->body }
-  else {
-    my $err = $tx->error;
-    die "$err->{code} response: $err->{message}" if $err->{code};
-    die "Connection error: $err->{message}";
-  }
+Write data server-side, used to implement web servers such as L<Mojo::Server::Daemon>. Meant to be overloaded in a
+subclass.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

@@ -5,10 +5,11 @@ BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 use Test::More;
 use IO::Socket::INET;
 use Mojo::Reactor::Poll;
+use Mojo::Util qw(steady_time);
 
 # Instantiation
 my $reactor = Mojo::Reactor::Poll->new;
-is ref $reactor, 'Mojo::Reactor::Poll', 'right object';
+is ref $reactor,                 'Mojo::Reactor::Poll', 'right object';
 is ref Mojo::Reactor::Poll->new, 'Mojo::Reactor::Poll', 'right object';
 undef $reactor;
 is ref Mojo::Reactor::Poll->new, 'Mojo::Reactor::Poll', 'right object';
@@ -28,10 +29,9 @@ ok time < ($time + 10), 'stopped automatically';
 
 # Listen
 my $listen = IO::Socket::INET->new(Listen => 5, LocalAddr => '127.0.0.1');
-my $port = $listen->sockport;
+my $port   = $listen->sockport;
 my ($readable, $writable);
-$reactor->io($listen => sub { pop() ? $writable++ : $readable++ })
-  ->watch($listen, 0, 0)->watch($listen, 1, 1);
+$reactor->io($listen => sub { pop() ? $writable++ : $readable++ })->watch($listen, 0, 0)->watch($listen, 1, 1);
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
 ok !$readable, 'handle is not readable';
@@ -41,19 +41,19 @@ ok !$writable, 'handle is not writable';
 my $client = IO::Socket::INET->new(PeerAddr => '127.0.0.1', PeerPort => $port);
 $reactor->timer(1 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable';
+ok $readable,  'handle is readable';
 ok !$writable, 'handle is not writable';
 
 # Accept
 my $server = $listen->accept;
-ok $reactor->remove($listen), 'removed';
+ok $reactor->remove($listen),  'removed';
 ok !$reactor->remove($listen), 'not removed again';
 ($readable, $writable) = ();
 $reactor->io($client => sub { pop() ? $writable++ : $readable++ });
 $reactor->again($reactor->timer(0.025 => sub { shift->stop }));
 $reactor->start;
 ok !$readable, 'handle is not readable';
-ok $writable, 'handle is writable';
+ok $writable,  'handle is writable';
 print $client "hello!\n";
 sleep 1;
 ok $reactor->remove($client), 'removed';
@@ -62,7 +62,7 @@ $reactor->io($server => sub { pop() ? $writable++ : $readable++ });
 $reactor->watch($server, 1, 0);
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable';
+ok $readable,  'handle is readable';
 ok !$writable, 'handle is not writable';
 ($readable, $writable) = ();
 $reactor->watch($server, 1, 1);
@@ -80,7 +80,7 @@ ok !$writable, 'handle is not writable';
 $reactor->watch($server, 1, 0);
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable';
+ok $readable,  'handle is readable';
 ok !$writable, 'handle is not writable';
 ($readable, $writable) = ();
 $reactor->io($server => sub { pop() ? $writable++ : $readable++ });
@@ -105,24 +105,24 @@ my $done;
 ($readable, $writable, $timer, $recurring) = ();
 $reactor->timer(0.025 => sub { $done = shift->is_running });
 $reactor->one_tick while !$done;
-ok $readable, 'handle is readable again';
-ok $writable, 'handle is writable again';
-ok !$timer, 'timer was not triggered';
+ok $readable,  'handle is readable again';
+ok $writable,  'handle is writable again';
+ok !$timer,    'timer was not triggered';
 ok $recurring, 'recurring was triggered again';
 ($readable, $writable, $timer, $recurring) = ();
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable again';
-ok $writable, 'handle is writable again';
-ok !$timer, 'timer was not triggered';
-ok $recurring, 'recurring was triggered again';
-ok $reactor->remove($id), 'removed';
+ok $readable,              'handle is readable again';
+ok $writable,              'handle is writable again';
+ok !$timer,                'timer was not triggered';
+ok $recurring,             'recurring was triggered again';
+ok $reactor->remove($id),  'removed';
 ok !$reactor->remove($id), 'not removed again';
 ($readable, $writable, $timer, $recurring) = ();
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable again';
-ok $writable, 'handle is writable again';
+ok $readable,   'handle is readable again';
+ok $writable,   'handle is writable again';
 ok !$timer,     'timer was not triggered';
 ok !$recurring, 'recurring was not triggered again';
 ($readable, $writable, $timer, $recurring) = ();
@@ -131,9 +131,9 @@ is $reactor->next_tick(sub { $next_tick++ }), undef, 'returned undef';
 $id = $reactor->recurring(0 => sub { $recurring++ });
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $readable, 'handle is readable again';
-ok $writable, 'handle is writable again';
-ok !$timer, 'timer was not triggered';
+ok $readable,  'handle is readable again';
+ok $writable,  'handle is writable again';
+ok !$timer,    'timer was not triggered';
 ok $recurring, 'recurring was triggered again';
 ok $next_tick, 'next tick was triggered';
 
@@ -159,8 +159,7 @@ is_deeply $result, [1 .. 10], 'right result';
 
 # Reset while watchers are active
 $writable = undef;
-$reactor->io($_ => sub { ++$writable and shift->reset })->watch($_, 0, 1)
-  for $client, $server;
+$reactor->io($_ => sub { ++$writable and shift->reset })->watch($_, 0, 1) for $client, $server;
 $reactor->start;
 is $writable, 1, 'only one handle was writable';
 
@@ -171,7 +170,7 @@ my $timer2;
 $reactor2->recurring(0 => sub { $timer2++ });
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $timer, 'timer was triggered';
+ok $timer,   'timer was triggered';
 ok !$timer2, 'timer was not triggered';
 $timer = $timer2 = 0;
 $reactor2->timer(0.025 => sub { shift->stop });
@@ -181,13 +180,14 @@ ok $timer2, 'timer was triggered';
 $timer = $timer2 = 0;
 $reactor->timer(0.025 => sub { shift->stop });
 $reactor->start;
-ok $timer, 'timer was triggered';
+ok $timer,   'timer was triggered';
 ok !$timer2, 'timer was not triggered';
 $timer = $timer2 = 0;
 $reactor2->timer(0.025 => sub { shift->stop });
 $reactor2->start;
 ok !$timer, 'timer was not triggered';
 ok $timer2, 'timer was triggered';
+$reactor->reset;
 
 # Restart timer
 my ($single, $pair, $one, $two, $last);
@@ -210,6 +210,28 @@ $reactor->start;
 is $pair, 2, 'timer pair was triggered';
 ok $single, 'single timer was triggered';
 ok $last,   'timers were triggered in the right order';
+
+# Reset timer
+my $before = steady_time;
+my ($after, $again);
+$one = $reactor->timer(300 => sub { $after = steady_time });
+$two = $reactor->recurring(
+  300 => sub {
+    my $reactor = shift;
+    $reactor->remove($two) if ++$again > 3;
+  }
+);
+$reactor->timer(
+  0.025 => sub {
+    my $reactor = shift;
+    $reactor->again($one, 0.025);
+    $reactor->again($two, 0.025);
+  }
+);
+$reactor->start;
+ok $after, 'timer was triggered';
+ok(($after - $before) < 200, 'less than 200 seconds');
+is $again, 4, 'recurring timer triggered four times';
 
 # Restart inactive timer
 $id = $reactor->timer(0 => sub { });
@@ -234,6 +256,12 @@ $reactor->timer(0 => sub { die "works!\n" });
 $reactor->start;
 like $err, qr/works!/, 'right error';
 
+# Reset events
+$reactor->on(error => sub { });
+ok $reactor->has_subscribers('error'), 'has subscribers';
+$reactor->reset;
+ok !$reactor->has_subscribers('error'), 'no subscribers';
+
 # Recursion
 $timer   = undef;
 $reactor = $reactor->new;
@@ -243,18 +271,6 @@ is $timer, 1, 'timer was triggered once';
 
 # Detection
 is(Mojo::Reactor::Poll->detect, 'Mojo::Reactor::Poll', 'right class');
-
-# Dummy reactor
-package Mojo::Reactor::Test;
-use Mojo::Base 'Mojo::Reactor::Poll';
-
-package main;
-
-# Detection (env)
-{
-  local $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Test';
-  is(Mojo::Reactor->detect, 'Mojo::Reactor::Test', 'right class');
-}
 
 # Reactor in control
 is ref Mojo::IOLoop->singleton->reactor, 'Mojo::Reactor::Poll', 'right object';

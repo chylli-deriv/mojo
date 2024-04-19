@@ -9,11 +9,11 @@ sub detect {
   my $self = shift;
   $self->http($ENV{HTTP_PROXY}   || $ENV{http_proxy});
   $self->https($ENV{HTTPS_PROXY} || $ENV{https_proxy});
-  return $self->not([split ',', $ENV{NO_PROXY} || $ENV{no_proxy} || '']);
+  return $self->not([split /,/, $ENV{NO_PROXY} || $ENV{no_proxy} || '']);
 }
 
 sub is_needed {
-  !grep { $_[1] =~ /\Q$_\E$/ } @{$_[0]->not || []};
+  !grep { $_[1] =~ /\Q$_\E$/ } @{$_[0]->not // []};
 }
 
 sub prepare {
@@ -81,16 +81,14 @@ Domains that don't require a proxy server to be used.
 
 =head1 METHODS
 
-L<Mojo::UserAgent::Proxy> inherits all methods from L<Mojo::Base> and
-implements the following new ones.
+L<Mojo::UserAgent::Proxy> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 detect
 
   $proxy = $proxy->detect;
 
-Check environment variables C<HTTP_PROXY>, C<http_proxy>, C<HTTPS_PROXY>,
-C<https_proxy>, C<NO_PROXY> and C<no_proxy> for proxy information. Automatic
-proxy detection can be enabled with the C<MOJO_PROXY> environment variable.
+Check environment variables C<HTTP_PROXY>, C<http_proxy>, C<HTTPS_PROXY>, C<https_proxy>, C<NO_PROXY> and C<no_proxy>
+for proxy information. Automatic proxy detection can be enabled with the C<MOJO_PROXY> environment variable.
 
 =head2 is_needed
 
@@ -106,6 +104,6 @@ Prepare proxy server information for transaction.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

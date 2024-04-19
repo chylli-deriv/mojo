@@ -8,8 +8,9 @@ has [qw(cookie_domain samesite secure)];
 has cookie_name        => 'mojolicious';
 has cookie_path        => '/';
 has default_expiration => 3600;
-has deserialize        => sub { \&Mojo::JSON::j };
-has serialize          => sub { \&Mojo::JSON::encode_json };
+has deserialize        => sub { \&_deserialize };
+has samesite           => 'Lax';
+has serialize          => sub { \&_serialize };
 
 sub load {
   my ($self, $c) = @_;
@@ -21,12 +22,12 @@ sub load {
   # "expiration" value is inherited
   my $expiration = $session->{expiration} // $self->default_expiration;
   return if !(my $expires = delete $session->{expires}) && $expiration;
-  return if defined $expires && $expires <= time;
+  return if defined $expires                            && $expires <= time;
 
   my $stash = $c->stash;
   return unless $stash->{'mojo.active_session'} = keys %$session;
   $stash->{'mojo.session'} = $session;
-  $session->{flash} = delete $session->{new_flash} if $session->{new_flash};
+  $session->{flash}        = delete $session->{new_flash} if $session->{new_flash};
 }
 
 sub store {
@@ -44,9 +45,8 @@ sub store {
 
   # Generate "expires" value from "expiration" if necessary
   my $expiration = $session->{expiration} // $self->default_expiration;
-  my $default = delete $session->{expires};
-  $session->{expires} = $default || time + $expiration
-    if $expiration || $default;
+  my $default    = delete $session->{expires};
+  $session->{expires} = $default || time + $expiration if $expiration || $default;
 
   my $value = b64_encode $self->serialize->($session), '';
   $value =~ y/=/-/;
@@ -59,6 +59,14 @@ sub store {
     secure   => $self->secure
   };
   $c->signed_cookie($self->cookie_name, $value, $options);
+}
+
+sub _deserialize { Mojo::JSON::decode_json($_[0] =~ s/\}\KZ*$//r) }
+
+sub _serialize {
+  no warnings 'numeric';
+  my $out = Mojo::JSON::encode_json($_[0]);
+  return $out . 'Z' x (1025 - length $out);
 }
 
 1;
@@ -79,10 +87,9 @@ Mojolicious::Sessions - Session manager based on signed cookies
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Sessions> manages sessions based on signed cookies for
-L<Mojolicious>. All data gets serialized with L<Mojo::JSON> and stored Base64
-encoded on the client-side, but is protected from unwanted changes with a
-HMAC-SHA1 signature.
+L<Mojolicious::Sessions> manages sessions based on signed cookies for L<Mojolicious>. All data gets serialized with
+L<Mojo::JSON> and stored Base64 encoded on the client-side, but is protected from unwanted changes with a HMAC-SHA256
+signature.
 
 =head1 ATTRIBUTES
 
@@ -114,11 +121,9 @@ Path for session cookies, defaults to C</>.
   my $time  = $sessions->default_expiration;
   $sessions = $sessions->default_expiration(3600);
 
-Default time for sessions to expire in seconds from now, defaults to C<3600>.
-The expiration timeout gets refreshed for every request. Setting the value to
-C<0> will allow sessions to persist until the browser window is closed, this
-can have security implications though. For more control you can also use the
-C<expiration> and C<expires> session values.
+Default time for sessions to expire in seconds from now, defaults to C<3600>. The expiration timeout gets refreshed for
+every request. Setting the value to C<0> will allow sessions to persist until the browser window is closed, this can
+have security implications though. For more control you can also use the C<expiration> and C<expires> session values.
 
   # Expiration date in seconds from now (persists between requests)
   $c->session(expiration => 604800);
@@ -132,39 +137,43 @@ C<expiration> and C<expires> session values.
 =head2 deserialize
 
   my $cb    = $sessions->deserialize;
-  $sessions = $sessions->deserialize(sub {...});
+  $sessions = $sessions->deserialize(sub ($bytes) {...});
 
 A callback used to deserialize sessions, defaults to L<Mojo::JSON/"j">.
 
-  $sessions->deserialize(sub {
-    my $bytes = shift;
-    return {};
-  });
+  $sessions->deserialize(sub ($bytes) { return {} });
+
+=head2 samesite
+
+  my $samesite = $sessions->samesite;
+  $sessions    = $sessions->samesite('Strict');
+
+Set the SameSite value on all session cookies, defaults to C<Lax>. Note that this attribute is B<EXPERIMENTAL> because
+even though most commonly used browsers support the feature, there is no specification yet besides L<this
+draft|https://tools.ietf.org/html/draft-west-first-party-cookies-07>.
+
+  # Disable SameSite feature
+  $sessions->samesite(undef);
 
 =head2 secure
 
   my $bool  = $sessions->secure;
   $sessions = $sessions->secure($bool);
 
-Set the secure flag on all session cookies, so that browsers send them only
-over HTTPS connections.
+Set the secure flag on all session cookies, so that browsers send them only over HTTPS connections.
 
 =head2 serialize
 
   my $cb    = $sessions->serialize;
-  $sessions = $sessions->serialize(sub {...});
+  $sessions = $sessions->serialize(sub ($hash) {...});
 
 A callback used to serialize sessions, defaults to L<Mojo::JSON/"encode_json">.
 
-  $sessions->serialize(sub {
-    my $hash = shift;
-    return '';
-  });
+  $sessions->serialize(sub ($hash) { return '' });
 
 =head1 METHODS
 
-L<Mojolicious::Sessions> inherits all methods from L<Mojo::Base> and implements
-the following new ones.
+L<Mojolicious::Sessions> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 load
 
@@ -180,6 +189,6 @@ Store session data in signed cookie.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

@@ -42,8 +42,8 @@ Mojo::Cookie::Request - HTTP request cookie
 
 =head1 DESCRIPTION
 
-L<Mojo::Cookie::Request> is a container for HTTP request cookies, based on
-L<RFC 6265|http://tools.ietf.org/html/rfc6265>.
+L<Mojo::Cookie::Request> is a container for HTTP request cookies, based on L<RFC
+6265|https://tools.ietf.org/html/rfc6265>.
 
 =head1 ATTRIBUTES
 
@@ -51,8 +51,7 @@ L<Mojo::Cookie::Request> inherits all attributes from L<Mojo::Cookie>.
 
 =head1 METHODS
 
-L<Mojo::Cookie::Request> inherits all methods from L<Mojo::Cookie> and
-implements the following new ones.
+L<Mojo::Cookie::Request> inherits all methods from L<Mojo::Cookie> and implements the following new ones.
 
 =head2 parse
 
@@ -68,6 +67,6 @@ Render cookie.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

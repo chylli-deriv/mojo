@@ -2,7 +2,7 @@ package Mojo::ByteStream;
 use Mojo::Base -strict;
 use overload bool => sub {1}, '""' => sub { ${$_[0]} }, fallback => 1;
 
-use Exporter 'import';
+use Exporter qw(import);
 use Mojo::Collection;
 use Mojo::Util;
 
@@ -10,10 +10,9 @@ our @EXPORT_OK = ('b');
 
 # Turn most functions from Mojo::Util into methods
 my @UTILS = (
-  qw(b64_decode b64_encode camelize decamelize hmac_sha1_sum html_unescape),
-  qw(md5_bytes md5_sum punycode_decode punycode_encode quote sha1_bytes),
-  qw(sha1_sum term_escape trim unindent unquote url_escape url_unescape),
-  qw(xml_escape xor_encode)
+  qw(b64_decode b64_encode camelize decamelize gunzip gzip hmac_sha1_sum html_unescape humanize_bytes md5_bytes),
+  qw(md5_sum punycode_decode punycode_encode quote sha1_bytes sha1_sum slugify term_escape trim unindent unquote),
+  qw(url_escape url_unescape xml_escape xor_encode)
 );
 for my $name (@UTILS) {
   my $sub = Mojo::Util->can($name);
@@ -47,34 +46,16 @@ sub secure_compare { Mojo::Util::secure_compare ${shift()}, shift }
 
 sub size { length ${$_[0]} }
 
-# DEPRECATED!
-sub slurp {
-  Mojo::Util::deprecated 'Mojo::ByteStream::slurp is DEPRECATED'
-    . ' in favor of Mojo::File::slurp';
-  require Mojo::File;
-  my $self = shift;
-  $$self = Mojo::File->new($$self)->slurp;
-  return $self;
-}
-
 sub split {
-  my ($self, $pattern) = @_;
-  return Mojo::Collection->new(map { $self->new($_) } split $pattern, $$self);
-}
-
-# DEPRECATED!
-sub spurt {
-  Mojo::Util::deprecated 'Mojo::ByteStream::spurt is DEPRECATED'
-    . ' in favor of Mojo::File::spurt';
-  require Mojo::File;
-  my $self = shift;
-  Mojo::File->new(shift)->spurt($$self);
-  return $self;
+  my ($self, $pat, $lim) = (shift, shift, shift // 0);
+  return Mojo::Collection->new(map { $self->new($_) } split $pat, $$self, $lim);
 }
 
 sub tap { shift->Mojo::Base::tap(@_) }
 
 sub to_string { ${$_[0]} }
+
+sub with_roles { shift->Mojo::Base::with_roles(@_) }
 
 sub _delegate {
   my ($self, $sub) = (shift, shift);
@@ -104,13 +85,13 @@ Mojo::ByteStream - ByteStream
   say "$stream";
 
   # Use the alternative constructor
-  use Mojo::ByteStream 'b';
+  use Mojo::ByteStream qw(b);
   my $stream = b('foobarbaz')->b64_encode('')->say;
 
 =head1 DESCRIPTION
 
-L<Mojo::ByteStream> is a scalar-based container for bytestreams that provides a
-more friendly API for many of the functions in L<Mojo::Util>.
+L<Mojo::ByteStream> is a scalar-based container for bytestreams that provides a more friendly API for many of the
+functions in L<Mojo::Util>.
 
   # Access scalar directly to manipulate bytestream
   my $stream = Mojo::ByteStream->new('foo');
@@ -118,8 +99,7 @@ more friendly API for many of the functions in L<Mojo::Util>.
 
 =head1 FUNCTIONS
 
-L<Mojo::ByteStream> implements the following functions, which can be imported
-individually.
+L<Mojo::ByteStream> implements the following functions, which can be imported individually.
 
 =head2 b
 
@@ -157,7 +137,7 @@ Camelize bytestream with L<Mojo::Util/"camelize">.
 
   my $stream2 = $stream->clone;
 
-Clone bytestream.
+Return a new L<Mojo::ByteStream> object cloned from this bytestream.
 
 =head2 decamelize
 
@@ -185,6 +165,18 @@ Encode bytestream with L<Mojo::Util/"encode">, defaults to using C<UTF-8>.
   # "%E2%99%A5"
   b('♥')->encode->url_escape;
 
+=head2 gunzip
+
+  $stream = $stream->gunzip;
+
+Uncompress bytestream with L<Mojo::Util/"gunzip">.
+
+=head2 gzip
+
+  stream = $stream->gzip;
+
+Compress bytestream with L<Mojo::Util/"gzip">.
+
 =head2 hmac_sha1_sum
 
   $stream = $stream->hmac_sha1_sum('passw0rd');
@@ -202,6 +194,12 @@ Unescape all HTML entities in bytestream with L<Mojo::Util/"html_unescape">.
 
   # "%3Chtml%3E"
   b('&lt;html&gt;')->html_unescape->url_escape;
+
+=head2 humanize_bytes
+
+  $stream = $stream->humanize_bytes;
+
+Turn number of bytes into a simplified human readable format for bytestream with L<Mojo::Util/"humanize_bytes">.
 
 =head2 md5_bytes
 
@@ -270,15 +268,25 @@ Generate SHA1 checksum for bytestream with L<Mojo::Util/"sha1_sum">.
 
 Size of bytestream.
 
+=head2 slugify
+
+  $stream = $stream->slugify;
+  $stream = $stream->slugify($bool);
+
+Generate URL slug for bytestream with L<Mojo::Util/"slugify">.
+
 =head2 split
 
   my $collection = $stream->split(',');
+  my $collection = $stream->split(',', -1);
 
-Turn bytestream into L<Mojo::Collection> object containing L<Mojo::ByteStream>
-objects.
+Turn bytestream into L<Mojo::Collection> object containing L<Mojo::ByteStream> objects.
 
   # "One,Two,Three"
   b("one,two,three")->split(',')->map('camelize')->join(',');
+
+  # "One,Two,Three,,,"
+  b("one,two,three,,,")->split(',', -1)->map('camelize')->join(',');
 
 =head2 tap
 
@@ -305,8 +313,7 @@ Stringify bytestream.
 
   $stream = $stream->trim;
 
-Trim whitespace characters from both ends of bytestream with
-L<Mojo::Util/"trim">.
+Trim whitespace characters from both ends of bytestream with L<Mojo::Util/"trim">.
 
 =head2 unindent
 
@@ -325,8 +332,7 @@ Unquote bytestream with L<Mojo::Util/"unquote">.
   $stream = $stream->url_escape;
   $stream = $stream->url_escape('^A-Za-z0-9\-._~');
 
-Percent encode all unsafe characters in bytestream with
-L<Mojo::Util/"url_escape">.
+Percent encode all unsafe characters in bytestream with L<Mojo::Util/"url_escape">.
 
   # "%E2%98%83"
   b('☃')->encode->url_escape;
@@ -335,18 +341,24 @@ L<Mojo::Util/"url_escape">.
 
   $stream = $stream->url_unescape;
 
-Decode percent encoded characters in bytestream with
-L<Mojo::Util/"url_unescape">.
+Decode percent encoded characters in bytestream with L<Mojo::Util/"url_unescape">.
 
   # "&lt;html&gt;"
   b('%3Chtml%3E')->url_unescape->xml_escape;
+
+=head2 with_roles
+
+  my $new_class = Mojo::ByteStream->with_roles('Mojo::ByteStream::Role::One');
+  my $new_class = Mojo::ByteStream->with_roles('+One', '+Two');
+  $stream       = $stream->with_roles('+One', '+Two');
+
+Alias for L<Mojo::Base/"with_roles">.
 
 =head2 xml_escape
 
   $stream = $stream->xml_escape;
 
-Escape only the characters C<&>, C<E<lt>>, C<E<gt>>, C<"> and C<'> in
-bytestream with L<Mojo::Util/"xml_escape">.
+Escape only the characters C<&>, C<E<lt>>, C<E<gt>>, C<"> and C<'> in bytestream with L<Mojo::Util/"xml_escape">.
 
 =head2 xor_encode
 
@@ -375,6 +387,6 @@ Alias for L</"to_string">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

@@ -1,7 +1,7 @@
 package Mojo::Asset;
 use Mojo::Base 'Mojo::EventEmitter';
 
-use Carp 'croak';
+use Carp qw(croak);
 
 has 'end_range';
 has start_range => 0;
@@ -18,6 +18,7 @@ sub move_to { croak 'Method "move_to" not implemented by subclass' }
 sub mtime   { croak 'Method "mtime" not implemented by subclass' }
 sub size    { croak 'Method "size" not implemented by subclass' }
 sub slurp   { croak 'Method "slurp" not implemented by subclass' }
+sub to_file { croak 'Method "to_file" not implemented by subclass' }
 
 1;
 
@@ -39,11 +40,12 @@ Mojo::Asset - HTTP content storage base class
   sub mtime     {...}
   sub size      {...}
   sub slurp     {...}
+  sub to_file   {...}
 
 =head1 DESCRIPTION
 
-L<Mojo::Asset> is an abstract base class for HTTP content storage backends,
-like L<Mojo::Asset::File> and L<Mojo::Asset::Memory>.
+L<Mojo::Asset> is an abstract base class for HTTP content storage backends, like L<Mojo::Asset::File> and
+L<Mojo::Asset::Memory>.
 
 =head1 EVENTS
 
@@ -69,8 +71,7 @@ Pretend file starts later.
 
 =head1 METHODS
 
-L<Mojo::Asset> inherits all methods from L<Mojo::EventEmitter> and implements
-the following new ones.
+L<Mojo::Asset> inherits all methods from L<Mojo::EventEmitter> and implements the following new ones.
 
 =head2 add_chunk
 
@@ -82,16 +83,15 @@ Add chunk of data to asset. Meant to be overloaded in a subclass.
 
   my $position = $asset->contains('bar');
 
-Check if asset contains a specific string. Meant to be overloaded in a
-subclass.
+Check if asset contains a specific string. Meant to be overloaded in a subclass.
 
 =head2 get_chunk
 
   my $bytes = $asset->get_chunk($offset);
   my $bytes = $asset->get_chunk($offset, $max);
 
-Get chunk of data starting from a specific position, defaults to a maximum
-chunk size of C<131072> bytes (128KB). Meant to be overloaded in a subclass.
+Get chunk of data starting from a specific position, defaults to a maximum chunk size of C<131072> bytes (128KiB).
+Meant to be overloaded in a subclass.
 
 =head2 is_file
 
@@ -129,8 +129,14 @@ Size of asset data in bytes. Meant to be overloaded in a subclass.
 
 Read all asset data at once. Meant to be overloaded in a subclass.
 
+=head2 to_file
+
+  my $file = $asset->to_file;
+
+Convert asset to L<Mojo::Asset::File> object. Meant to be overloaded in a subclass.
+
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

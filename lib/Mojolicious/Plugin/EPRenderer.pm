@@ -10,9 +10,8 @@ sub register {
   my ($self, $app, $conf) = @_;
 
   # Auto escape by default to prevent XSS attacks
-  my $ep = {auto_escape => 1, %{$conf->{template} || {}}, vars => 1};
-  my $ns = $self->{namespace} = $ep->{namespace}
-    //= 'Mojo::Template::Sandbox::' . md5_sum "$self";
+  my $ep = {auto_escape => 1, %{$conf->{template} // {}}, vars => 1};
+  my $ns = $self->{namespace} = $ep->{namespace} //= 'Mojo::Template::Sandbox::' . md5_sum "$self";
 
   # Make "$self" and "$c" available in templates
   $ep->{prepend} = 'my $self = my $c = _C;' . ($ep->{prepend} // '');
@@ -31,15 +30,13 @@ sub register {
       $cache->set($key => $mt = Mojo::Template->new($ep)) unless $mt;
 
       # Export helpers only once
-      ++$self->{helpers} and _helpers($ns, $renderer->helpers)
-        unless $self->{helpers};
+      ++$self->{helpers} and _helpers($ns, $renderer->helpers) unless $self->{helpers};
 
       # Make current controller available and render with "epl" handler
       no strict 'refs';
       no warnings 'redefine';
       local *{"${ns}::_C"} = sub {$c};
-      Mojolicious::Plugin::EPLRenderer::_render($renderer, $c, $output,
-        $options, $mt, $c->stash);
+      Mojolicious::Plugin::EPLRenderer::_render($renderer, $c, $output, $options, $mt, $c->stash);
     }
   );
 }
@@ -74,14 +71,13 @@ Mojolicious::Plugin::EPRenderer - Embedded Perl renderer plugin
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Plugin::EPRenderer> is a renderer for Embedded Perl templates.
-For more information see L<Mojolicious::Guides::Rendering/"Embedded Perl">.
+L<Mojolicious::Plugin::EPRenderer> is a renderer for Embedded Perl templates. For more information see
+L<Mojolicious::Guides::Rendering/"Embedded Perl">.
 
-This is a core plugin, that means it is always enabled and its code a good
-example for learning to build new plugins, you're welcome to fork it.
+This is a core plugin, that means it is always enabled and its code a good example for learning to build new plugins,
+you're welcome to fork it.
 
-See L<Mojolicious::Plugins/"PLUGINS"> for a list of plugins that are available
-by default.
+See L<Mojolicious::Plugins/"PLUGINS"> for a list of plugins that are available by default.
 
 =head1 OPTIONS
 
@@ -99,12 +95,12 @@ Handler name, defaults to C<ep>.
   # Mojolicious::Lite
   plugin EPRenderer => {template => {line_start => '.'}};
 
-Attribute values passed to L<Mojo::Template> object used to render templates.
+Attribute values passed to L<Mojo::Template> objects used to render templates.
 
 =head1 METHODS
 
-L<Mojolicious::Plugin::EPRenderer> inherits all methods from
-L<Mojolicious::Plugin::EPLRenderer> and implements the following new ones.
+L<Mojolicious::Plugin::EPRenderer> inherits all methods from L<Mojolicious::Plugin::EPLRenderer> and implements the
+following new ones.
 
 =head2 register
 
@@ -115,6 +111,6 @@ Register renderer in L<Mojolicious> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

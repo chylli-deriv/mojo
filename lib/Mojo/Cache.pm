@@ -3,15 +3,15 @@ use Mojo::Base -base;
 
 has 'max_keys' => 100;
 
-sub get { (shift->{cache} || {})->{shift()} }
+sub get { (shift->{cache} // {})->{shift()} }
 
 sub set {
   my ($self, $key, $value) = @_;
 
   return $self unless (my $max = $self->max_keys) > 0;
 
-  my $cache = $self->{cache} ||= {};
-  my $queue = $self->{queue} ||= [];
+  my $cache = $self->{cache} //= {};
+  my $queue = $self->{queue} //= [];
   delete $cache->{shift @$queue} while @$queue >= $max;
   push @$queue, $key unless exists $cache->{$key};
   $cache->{$key} = $value;
@@ -48,13 +48,11 @@ L<Mojo::Cache> implements the following attributes.
   my $max = $cache->max_keys;
   $cache  = $cache->max_keys(50);
 
-Maximum number of cache keys, defaults to C<100>. Setting the value to C<0>
-will disable caching.
+Maximum number of cache keys, defaults to C<100>. Setting the value to C<0> will disable caching.
 
 =head1 METHODS
 
-L<Mojo::Cache> inherits all methods from L<Mojo::Base> and implements the
-following new ones.
+L<Mojo::Cache> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 get
 
@@ -70,6 +68,6 @@ Set cached value.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

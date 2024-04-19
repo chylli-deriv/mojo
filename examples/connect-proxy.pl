@@ -1,16 +1,18 @@
-use Mojo::Base -strict;
+#
+# Minimal CONNECT proxy server for debugging
+#
+#   $ HTTPS_PROXY=http://127.0.0.1:3000 mojo get https://mojolicious.org
+#
+use Mojo::Base -strict, -signatures;
 use Mojo::IOLoop;
 
-# Minimal CONNECT proxy server to test TLS tunneling
 my %buffer;
 Mojo::IOLoop->server(
-  {port => 3000} => sub {
-    my ($loop, $stream, $id) = @_;
+  {port => 3000} => sub ($loop, $stream, $id) {
 
     # Connection to client
     $stream->on(
-      read => sub {
-        my ($stream, $chunk) = @_;
+      read => sub ($stream, $chunk) {
 
         # Write chunk from client to server
         my $server = $buffer{$id}{connection};
@@ -37,15 +39,8 @@ Mojo::IOLoop->server(
 
                 # Start forwarding data in both directions
                 say "Forwarding to $address:$port";
-                Mojo::IOLoop->stream($id)
-                  ->write("HTTP/1.1 200 OK\x0d\x0a"
-                    . "Connection: keep-alive\x0d\x0a\x0d\x0a");
-                $stream->on(
-                  read => sub {
-                    my ($stream, $chunk) = @_;
-                    Mojo::IOLoop->stream($id)->write($chunk);
-                  }
-                );
+                Mojo::IOLoop->stream($id)->write("HTTP/1.1 200 OK\x0d\x0a" . "Connection: keep-alive\x0d\x0a\x0d\x0a");
+                $stream->on(read => sub ($stream, $chunk) { Mojo::IOLoop->stream($id)->write($chunk) });
 
                 # Server closed connection
                 $stream->on(
@@ -74,11 +69,7 @@ Mojo::IOLoop->server(
   }
 );
 
-print <<'EOF';
-Starting CONNECT proxy on port 3000.
-For testing use something like "HTTPS_PROXY=http://127.0.0.1:3000".
-EOF
-
+print "Starting CONNECT proxy on port 3000.\n";
 Mojo::IOLoop->start;
 
 1;

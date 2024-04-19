@@ -2,9 +2,11 @@ use Mojo::Base -strict;
 
 BEGIN { $ENV{MOJO_REACTOR} = 'Mojo::Reactor::Poll' }
 
+use Test::Mojo;
 use Test::More;
 use Mojolicious::Lite;
-use Test::Mojo;
+
+get '/assets';
 
 options 'tags';
 
@@ -22,6 +24,8 @@ get 'script';
 
 get 'style';
 
+get 'favicon';
+
 get '/basicform';
 
 post '/text';
@@ -37,6 +41,17 @@ any [qw(PATCH POST)] => '/☃' => 'snowman';
 post '/no_snowman';
 
 my $t = Test::Mojo->new;
+
+subtest 'Assets' => sub {
+  $t->get_ok('/assets')->status_is(200)->content_is(<<EOF);
+<script src="/assets/foo.ab1234cd5678ef.js"></script>
+<script async="async" src="/assets/foo.ab1234cd5678ef.js"></script>
+<link href="/assets/foo.ab1234cd5678ef.css" rel="stylesheet">
+<link href="/assets/foo.ab1234cd5678ef.css" media="foo" rel="stylesheet">
+<img src="/assets/foo.png">
+<img alt="test" src="/assets/foo.png">
+EOF
+};
 
 # Reuse values
 my $values = [app->c(EU => [qw(de en)])];
@@ -133,14 +148,15 @@ $t->get_ok('/buttons')->status_is(200)
 # Scripts
 $t->get_ok('/script')->status_is(200)->content_is(<<EOF);
 <script src="/script.js"></script>
+<script async src="/script.js"></script>
 <script>//<![CDATA[
 
-  var a = 'b';
+  const a = 'b';
 
 //]]></script>
 <script type="foo">//<![CDATA[
 
-  var a = 'b';
+  const a = 'b';
 
 //]]></script>
 EOF
@@ -148,6 +164,7 @@ EOF
 # Stylesheets
 $t->get_ok('/style')->status_is(200)->content_is(<<EOF);
 <link href="/foo.css" rel="stylesheet">
+<link href="/foo.css" rel="stylesheet" title="Test">
 <style>/*<![CDATA[*/
 
   body {color: #000}
@@ -158,6 +175,12 @@ $t->get_ok('/style')->status_is(200)->content_is(<<EOF);
   body {color: #000}
 
 /*]]>*/</style>
+EOF
+
+# Favicon
+$t->get_ok('/favicon')->status_is(200)->content_is(<<EOF);
+<link href="/favicon.ico" rel="icon">
+<link href="/foo.ico" rel="icon">
 EOF
 
 # Basic form
@@ -273,8 +296,7 @@ $t->get_ok('/multibox?foo=bar')->status_is(200)->content_is(<<EOF);
 EOF
 
 # Checkboxes with multiple values
-$t->get_ok('/multibox?foo=two&foo=one&foo=on')->status_is(200)
-  ->content_is(<<EOF);
+$t->get_ok('/multibox?foo=two&foo=one&foo=on')->status_is(200)->content_is(<<EOF);
 <form action="/multibox">
   <input checked name="foo" type="checkbox">
   <input checked name="foo" type="checkbox" value="one">
@@ -285,8 +307,7 @@ $t->get_ok('/multibox?foo=two&foo=one&foo=on')->status_is(200)
 EOF
 
 # Advanced form with values
-$t->get_ok('/form/lala?a=3&a=2&b=0&c=2&d=3&escaped=1%22+%222')->status_is(200)
-  ->content_is(<<EOF);
+$t->get_ok('/form/lala?a=3&a=2&b=0&c=2&d=3&escaped=1%22+%222')->status_is(200)->content_is(<<EOF);
 <form action="/links" method="post">
   <input name="foo">
 </form>
@@ -319,8 +340,7 @@ $t->get_ok('/form/lala?a=3&a=2&b=0&c=2&d=3&escaped=1%22+%222')->status_is(200)
 EOF
 
 # Advanced form with different values
-$t->get_ok('/form/lala?c=b&d=3&e=4&f=<5&b=on')->status_is(200)
-  ->content_is(<<EOF);
+$t->get_ok('/form/lala?c=b&d=3&e=4&f=<5&b=on')->status_is(200)->content_is(<<EOF);
 <form action="/links" method="post">
   <input name="foo">
 </form>
@@ -417,8 +437,7 @@ $t->put_ok('/selection?a=e&foo=bar&bar=baz&yada=b&h=j')->status_is(200)
     . "\n</form>\n");
 
 # Selection with multiple values
-$t->put_ok('/selection?foo=bar&a=e&foo=baz&bar=d&yada=a&yada=b&h=i&h=j')
-  ->status_is(200)
+$t->put_ok('/selection?foo=bar&a=e&foo=baz&bar=d&yada=a&yada=b&h=i&h=j')->status_is(200)
   ->content_is("<form action=\"/selection?_method=PUT\" method=\"POST\">\n  "
     . '<select name="a">'
     . '<option value="b">b</option>'
@@ -451,7 +470,7 @@ $t->put_ok('/selection?foo=bar&a=e&foo=baz&bar=d&yada=a&yada=b&h=i&h=j')
     . "\n</form>\n");
 
 # Selection with multiple values preselected
-$t->put_ok('/selection?preselect=1')->status_is(200)
+$t->put_ok('/selection?preselect=1&undef=1')->status_is(200)
   ->content_is("<form action=\"/selection?_method=PUT\" method=\"POST\">\n  "
     . '<select name="a">'
     . '<option selected value="b">b</option>'
@@ -526,6 +545,14 @@ EOF
 done_testing();
 
 __DATA__
+@@ assets.html.ep
+<%= asset_tag '/foo.js' %>
+<%= asset_tag '/foo.js', async => 'async' %>
+<%= asset_tag '/foo.css' %>
+<%= asset_tag '/foo.css', media => 'foo' %>
+<%= asset_tag '/foo.png' %>
+<%= asset_tag '/foo.png', alt => 'test' %>
+
 @@ tags.html.ep
 <%= tag 'foo' %>
 <%= tag 'foo', bar => 'baz' %>
@@ -576,21 +603,27 @@ __DATA__
 
 @@ script.html.ep
 <%= javascript '/script.js' %>
+<%= javascript '/script.js', async => undef %>
 <%= javascript begin %>
-  var a = 'b';
+  const a = 'b';
 <% end %>
 <%= javascript type => 'foo' => begin %>
-  var a = 'b';
+  const a = 'b';
 <% end %>
 
 @@ style.html.ep
 <%= stylesheet '/foo.css' %>
+<%= stylesheet '/foo.css', title => 'Test' %>
 <%= stylesheet begin %>
   body {color: #000}
 <% end %>
 <%= stylesheet type => 'foo' => begin %>
   body {color: #000}
 <% end %>
+
+@@ favicon.html.ep
+<%= favicon %>
+<%= favicon '/foo.ico' %>
 
 @@ basicform.html.ep
 %= form_for links => begin
@@ -664,6 +697,7 @@ __DATA__
 
 @@ selection.html.ep
 % param a => qw(b g) if param 'preselect';
+% param foo => undef if param 'undef';
 %= form_for selection => begin
   %= select_field a => ['b', c(c => ['<d', [ E => 'e'], 'f']), 'g']
   %= select_field foo => [qw(bar baz)], multiple => 'multiple'

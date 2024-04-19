@@ -1,10 +1,10 @@
 package Mojo::Asset::File;
 use Mojo::Base 'Mojo::Asset';
 
-use Carp 'croak';
-use Fcntl 'SEEK_SET';
+use Carp                  qw(croak);
+use Fcntl                 qw(SEEK_SET);
 use File::Spec::Functions ();
-use Mojo::File 'tempfile';
+use Mojo::File            qw(tempfile);
 
 has [qw(cleanup path)];
 has handle => sub {
@@ -20,8 +20,7 @@ has handle => sub {
   return Mojo::File->new($path)->open('+>>') if defined $path;
 
   # Create a temporary file
-  my $template = 'mojo.tmp.XXXXXXXXXXXXXXXX';
-  my $file = tempfile DIR => $self->tmpdir, TEMPLATE => $template, UNLINK => 0;
+  my $file = tempfile DIR => $self->tmpdir, TEMPLATE => 'mojo.tmp.XXXXXXXXXXXXXXXX', UNLINK => 0;
   $self->path($file->to_string);
   return $file->open('+>>');
 };
@@ -29,15 +28,17 @@ has tmpdir => sub { $ENV{MOJO_TMPDIR} || File::Spec::Functions::tmpdir };
 
 sub DESTROY {
   my $self = shift;
+
   return unless $self->cleanup && defined(my $path = $self->path);
   if (my $handle = $self->handle) { close $handle }
-  unlink $path if -w $path;
+
+  # Only the process that created the file is allowed to remove it
+  Mojo::File->new($path)->remove if -w $path && ($self->{pid} // $$) == $$;
 }
 
 sub add_chunk {
   my ($self, $chunk) = @_;
-  ($self->handle->syswrite($chunk) // -1) == length $chunk
-    or croak "Can't write to asset: $!";
+  ($self->handle->syswrite($chunk) // -1) == length $chunk or croak "Can't write to asset: $!";
   return $self;
 }
 
@@ -55,7 +56,7 @@ sub contains {
 
   # Sliding window search
   my $offset = 0;
-  my $start = $handle->sysread(my $window, $len);
+  my $start  = $handle->sysread(my $window, $len);
   while ($offset < $end) {
 
     # Read as much as possible
@@ -66,7 +67,7 @@ sub contains {
     # Search window
     my $pos = index $window, $str;
     return $offset + $pos if $pos >= 0;
-    return -1 if $read == 0 || ($offset += $read) == $end;
+    return -1             if $read == 0 || ($offset += $read) == $end;
 
     # Resize window
     substr $window, 0, $read, '';
@@ -109,6 +110,12 @@ sub move_to {
 
 sub mtime { (stat shift->handle)[9] }
 
+sub new {
+  my $file = shift->SUPER::new(@_);
+  $file->{pid} = $$;
+  return $file;
+}
+
 sub size { -s shift->handle }
 
 sub slurp {
@@ -118,6 +125,8 @@ sub slurp {
   while ($ret = $handle->sysread(my $buffer, 131072, 0)) { $content .= $buffer }
   return defined $ret ? $content : croak "Can't read from asset: $!";
 }
+
+sub to_file {shift}
 
 1;
 
@@ -152,8 +161,7 @@ L<Mojo::Asset::File> inherits all events from L<Mojo::Asset>.
 
 =head1 ATTRIBUTES
 
-L<Mojo::Asset::File> inherits all attributes from L<Mojo::Asset> and implements
-the following new ones.
+L<Mojo::Asset::File> inherits all attributes from L<Mojo::Asset> and implements the following new ones.
 
 =head2 cleanup
 
@@ -167,8 +175,7 @@ Delete L</"path"> automatically once the file is not used anymore.
   my $handle = $file->handle;
   $file      = $file->handle(IO::File->new);
 
-Filehandle, created on demand for L</"path">, which can be generated
-automatically and safely based on L</"tmpdir">.
+Filehandle, created on demand for L</"path">, which can be generated automatically and safely based on L</"tmpdir">.
 
 =head2 path
 
@@ -182,13 +189,12 @@ File path used to create L</"handle">.
   my $tmpdir = $file->tmpdir;
   $file      = $file->tmpdir('/tmp');
 
-Temporary directory used to generate L</"path">, defaults to the value of the
-C<MOJO_TMPDIR> environment variable or auto-detection.
+Temporary directory used to generate L</"path">, defaults to the value of the C<MOJO_TMPDIR> environment variable or
+auto-detection.
 
 =head1 METHODS
 
-L<Mojo::Asset::File> inherits all methods from L<Mojo::Asset> and implements
-the following new ones.
+L<Mojo::Asset::File> inherits all methods from L<Mojo::Asset> and implements the following new ones.
 
 =head2 add_chunk
 
@@ -207,8 +213,7 @@ Check if asset contains a specific string.
   my $bytes = $file->get_chunk($offset);
   my $bytes = $file->get_chunk($offset, $max);
 
-Get chunk of data starting from a specific position, defaults to a maximum
-chunk size of C<131072> bytes (128KB).
+Get chunk of data starting from a specific position, defaults to a maximum chunk size of C<131072> bytes (128KiB).
 
 =head2 is_file
 
@@ -228,6 +233,14 @@ Move asset data into a specific file and disable L</"cleanup">.
 
 Modification time of asset.
 
+=head2 new
+
+  my $file = Mojo::Asset::File->new;
+  my $file = Mojo::Asset::File->new(path => '/home/sri/test.txt');
+  my $file = Mojo::Asset::File->new({path => '/home/sri/test.txt'});
+
+Construct a new L<Mojo::Asset::File> object.
+
 =head2 size
 
   my $size = $file->size;
@@ -240,8 +253,14 @@ Size of asset data in bytes.
 
 Read all asset data at once.
 
+=head2 to_file
+
+  $file = $file->to_file;
+
+Does nothing but return the invocant, since we already have a L<Mojo::Asset::File> object.
+
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

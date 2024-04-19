@@ -2,26 +2,33 @@ package Mojolicious::Command::daemon;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Server::Daemon;
-use Mojo::Util 'getopt';
+use Mojo::Util qw(getopt);
 
 has description => 'Start application with HTTP and WebSocket server';
-has usage => sub { shift->extract_usage };
+has usage       => sub { shift->extract_usage };
 
-sub run {
+sub build_server {
   my ($self, @args) = @_;
 
   my $daemon = Mojo::Server::Daemon->new(app => $self->app);
-  getopt \@args,
+  die $self->usage
+    unless getopt \@args,
     'b|backlog=i'            => sub { $daemon->backlog($_[1]) },
     'c|clients=i'            => sub { $daemon->max_clients($_[1]) },
     'i|inactivity-timeout=i' => sub { $daemon->inactivity_timeout($_[1]) },
-    'l|listen=s'   => \my @listen,
-    'p|proxy'      => sub { $daemon->reverse_proxy(1) },
-    'r|requests=i' => sub { $daemon->max_requests($_[1]) };
+    'k|keep-alive-timeout=i' => sub { $daemon->keep_alive_timeout($_[1]) },
+    'l|listen=s'             => \my @listen,
+    'p|proxy:s'              => \my @proxy,
+    'r|requests=i'           => sub { $daemon->max_requests($_[1]) };
 
   $daemon->listen(\@listen) if @listen;
-  $daemon->run;
+  $daemon->reverse_proxy(1) if @proxy;
+  my @trusted = grep {length} @proxy;
+  $daemon->trusted_proxies(\@trusted) if @trusted;
+  return $daemon;
 }
+
+sub run { shift->build_server(@_)->run }
 
 1;
 
@@ -36,10 +43,11 @@ Mojolicious::Command::daemon - Daemon command
   Usage: APPLICATION daemon [OPTIONS]
 
     ./myapp.pl daemon
-    ./myapp.pl daemon -m production -l http://*:8080
+    ./myapp.pl daemon -m production -p -l http://*:8080
     ./myapp.pl daemon -l http://127.0.0.1:8080 -l https://[::]:8081
     ./myapp.pl daemon -l 'https://*:443?cert=./server.crt&key=./server.key'
     ./myapp.pl daemon -l http+unix://%2Ftmp%2Fmyapp.sock
+    ./myapp.pl daemon -l http://127.0.0.1:8080 -p 127.0.0.0/8 -p fc00::/7
 
   Options:
     -b, --backlog <size>                 Listen backlog size, defaults to
@@ -51,34 +59,36 @@ Mojolicious::Command::daemon - Daemon command
                                          application, defaults to the value of
                                          MOJO_HOME or auto-detection
     -i, --inactivity-timeout <seconds>   Inactivity timeout, defaults to the
-                                         value of MOJO_INACTIVITY_TIMEOUT or 15
+                                         value of MOJO_INACTIVITY_TIMEOUT or 30
+    -k, --keep-alive-timeout <seconds>   Keep-alive timeout, defaults to the
+                                         value of MOJO_KEEP_ALIVE_TIMEOUT or 5
     -l, --listen <location>              One or more locations you want to
                                          listen on, defaults to the value of
                                          MOJO_LISTEN or "http://*:3000"
     -m, --mode <name>                    Operating mode for your application,
                                          defaults to the value of
                                          MOJO_MODE/PLACK_ENV or "development"
-    -p, --proxy                          Activate reverse proxy support,
+    -p, --proxy [<network>]              Activate reverse proxy support,
                                          defaults to the value of
-                                         MOJO_REVERSE_PROXY
+                                         MOJO_REVERSE_PROXY, optionally takes
+                                         one or more trusted proxy addresses or
+                                         networks
     -r, --requests <number>              Maximum number of requests per
                                          keep-alive connection, defaults to 100
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::daemon> starts applications with the
-L<Mojo::Server::Daemon> backend.
+L<Mojolicious::Command::daemon> starts applications with the L<Mojo::Server::Daemon> backend.
 
-This is a core command, that means it is always enabled and its code a good
-example for learning to build new commands, you're welcome to fork it.
+This is a core command, that means it is always enabled and its code a good example for learning to build new commands,
+you're welcome to fork it.
 
-See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are
-available by default.
+See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::daemon> inherits all attributes from
-L<Mojolicious::Command> and implements the following new ones.
+L<Mojolicious::Command::daemon> inherits all attributes from L<Mojolicious::Command> and implements the following new
+ones.
 
 =head2 description
 
@@ -96,8 +106,14 @@ Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::daemon> inherits all methods from
-L<Mojolicious::Command> and implements the following new ones.
+L<Mojolicious::Command::daemon> inherits all methods from L<Mojolicious::Command> and implements the following new
+ones.
+
+=head2 build_server
+
+  my $server = $daemon->build_server(@ARGV);
+
+Build L<Mojo::Server::Daemon> instance from command line arguments.
 
 =head2 run
 
@@ -107,6 +123,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

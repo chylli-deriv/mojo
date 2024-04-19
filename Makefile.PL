@@ -1,13 +1,11 @@
-use 5.010001;
+use 5.016;
 
 use strict;
 use warnings;
 
 use ExtUtils::MakeMaker;
 
-# Pod::Simple 3.09 first shipped with Perl 5.11.2
-# JSON::PP 2.27103 first shipped with Perl 5.13.9
-# Time::Local 1.2 first shipped with Perl 5.13.9
+# Sub::Util 1.41 first shipped with Perl 5.21.4
 # IO::Socket::IP 0.37 first shipped with Perl 5.21.11
 WriteMakefile(
   NAME         => 'Mojolicious',
@@ -18,26 +16,22 @@ WriteMakefile(
   META_MERGE   => {
     dynamic_config => 0,
     'meta-spec'    => {version => 2},
-    no_index       => {directory => ['examples', 't']},
-    prereqs        => {runtime => {requires => {perl => '5.010001'}}},
-    resources      => {
-      bugtracker => {web => 'https://github.com/kraih/mojo/issues'},
-      homepage   => 'http://mojolicious.org',
+    no_index       =>
+      {directory => [qw(examples t)], package => [qw(Mojo::Log::_Capture Mojo::Server::PSGI::_IO Mojo::Util::_Guard)],},
+    prereqs   => {runtime => {requires => {perl => '5.016'}}},
+    resources => {
+      bugtracker => {web => 'https://github.com/mojolicious/mojo/issues'},
+      homepage   => 'https://mojolicious.org',
       license    => ['http://www.opensource.org/licenses/artistic-license-2.0'],
       repository => {
         type => 'git',
-        url  => 'https://github.com/kraih/mojo.git',
-        web  => 'https://github.com/kraih/mojo',
+        url  => 'https://github.com/mojolicious/mojo.git',
+        web  => 'https://github.com/mojolicious/mojo',
       },
-      x_IRC => 'irc://irc.perl.org/#mojo'
+      x_IRC => {url => 'irc://irc.libera.chat/#mojo', web => 'https://web.libera.chat/#mojo'}
     },
   },
-  PREREQ_PM => {
-    'IO::Socket::IP' => '0.37',
-    'JSON::PP'       => '2.27103',
-    'Pod::Simple'    => '3.09',
-    'Time::Local'    => '1.2'
-  },
+  PREREQ_PM => {'IO::Socket::IP' => '0.37', 'Sub::Util' => '1.41'},
   EXE_FILES => ['script/hypnotoad', 'script/mojo', 'script/morbo'],
-  test => {TESTS => 't/*.t t/*/*.t'}
+  test      => {TESTS => 't/*.t t/*/*.t'}
 );

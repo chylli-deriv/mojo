@@ -4,8 +4,7 @@ use overload bool => sub {1}, '""' => sub { shift->to_string }, fallback => 1;
 
 use Mojo::Parameters;
 use Mojo::Path;
-use Mojo::Util
-  qw(decode encode punycode_decode punycode_encode url_escape url_unescape);
+use Mojo::Util qw(decode encode punycode_decode punycode_encode url_escape url_unescape);
 
 has base => sub { Mojo::URL->new };
 has [qw(fragment host port scheme userinfo)];
@@ -36,18 +35,14 @@ sub ihost {
   my $self = shift;
 
   # Decode
-  return $self->host(join '.',
-    map { /^xn--(.+)$/ ? punycode_decode $1 : $_ } split(/\./, shift, -1))
-    if @_;
+  return $self->host(join '.', map { /^xn--(.+)$/ ? punycode_decode $1 : $_ } split(/\./, shift, -1)) if @_;
 
   # Check if host needs to be encoded
   return undef unless defined(my $host = $self->host);
   return $host unless $host =~ /[^\x00-\x7f]/;
 
   # Encode
-  return join '.',
-    map { /[^\x00-\x7f]/ ? ('xn--' . punycode_encode $_) : $_ }
-    split(/\./, $host, -1);
+  return join '.', map { /[^\x00-\x7f]/ ? ('xn--' . punycode_encode $_) : $_ } split(/\./, $host, -1);
 }
 
 sub is_abs { !!shift->scheme }
@@ -87,7 +82,13 @@ sub path {
 }
 
 sub path_query {
-  my $self  = shift;
+  my ($self, $pq) = @_;
+
+  if (defined $pq) {
+    return $self unless $pq =~ /^([^?#]*)(?:\?([^#]*))?/;
+    return defined $2 ? $self->path($1)->query($2) : $self->path($1);
+  }
+
   my $query = $self->query->to_string;
   return $self->path->to_string . (length $query ? "?$query" : '');
 }
@@ -104,11 +105,11 @@ sub query {
   # Replace with list
   if (@_ > 1) { $q->pairs([])->parse(@_) }
 
-  # Merge with array
-  elsif (ref $_[0] eq 'ARRAY') { $q->merge(@{$_[0]}) }
+  # Merge with hash
+  elsif (ref $_[0] eq 'HASH') { $q->merge(%{$_[0]}) }
 
-  # Append hash
-  elsif (ref $_[0] eq 'HASH') { $q->append(%{$_[0]}) }
+  # Append array
+  elsif (ref $_[0] eq 'ARRAY') { $q->append(@{$_[0]}) }
 
   # New parameters
   else { $self->{query} = ref $_[0] ? $_[0] : $q->parse($_[0]) }
@@ -215,11 +216,9 @@ Mojo::URL - Uniform Resource Locator
 
 =head1 DESCRIPTION
 
-L<Mojo::URL> implements a subset of
-L<RFC 3986|http://tools.ietf.org/html/rfc3986>,
-L<RFC 3987|http://tools.ietf.org/html/rfc3987> and the
-L<URL Living Standard|https://url.spec.whatwg.org> for Uniform Resource
-Locators with support for IDNA and IRIs.
+L<Mojo::URL> implements a subset of L<RFC 3986|https://tools.ietf.org/html/rfc3986>, L<RFC
+3987|https://tools.ietf.org/html/rfc3987> and the L<URL Living Standard|https://url.spec.whatwg.org> for Uniform
+Resource Locators with support for IDNA and IRIs.
 
 =head1 ATTRIBUTES
 
@@ -287,14 +286,13 @@ Userinfo part of this URL.
 
 =head1 METHODS
 
-L<Mojo::URL> inherits all methods from L<Mojo::Base> and implements the
-following new ones.
+L<Mojo::URL> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 clone
 
   my $url2 = $url->clone;
 
-Clone this URL.
+Return a new L<Mojo::URL> object cloned from this URL.
 
 =head2 host_port
 
@@ -378,27 +376,27 @@ Password part of L</"userinfo">.
   $url     = $url->path('/foo/bar');
   $url     = $url->path(Mojo::Path->new);
 
-Path part of this URL, relative paths will be merged with
-L<Mojo::Path/"merge">, defaults to a L<Mojo::Path> object.
+Path part of this URL, relative paths will be merged with L<Mojo::Path/"merge">, defaults to a L<Mojo::Path> object.
 
-  # "perldoc"
-  Mojo::URL->new('http://example.com/perldoc/Mojo')->path->parts->[0];
+  # "test"
+  Mojo::URL->new('http://example.com/test/Mojo')->path->parts->[0];
 
-  # "/perldoc/DOM/HTML"
-  Mojo::URL->new('http://example.com/perldoc/Mojo')->path->merge('DOM/HTML');
+  # "/test/DOM/HTML"
+  Mojo::URL->new('http://example.com/test/Mojo')->path->merge('DOM/HTML');
 
   # "http://example.com/DOM/HTML"
-  Mojo::URL->new('http://example.com/perldoc/Mojo')->path('/DOM/HTML');
+  Mojo::URL->new('http://example.com/test/Mojo')->path('/DOM/HTML');
 
-  # "http://example.com/perldoc/DOM/HTML"
-  Mojo::URL->new('http://example.com/perldoc/Mojo')->path('DOM/HTML');
+  # "http://example.com/test/DOM/HTML"
+  Mojo::URL->new('http://example.com/test/Mojo')->path('DOM/HTML');
 
-  # "http://example.com/perldoc/Mojo/DOM/HTML"
-  Mojo::URL->new('http://example.com/perldoc/Mojo/')->path('DOM/HTML');
+  # "http://example.com/test/Mojo/DOM/HTML"
+  Mojo::URL->new('http://example.com/test/Mojo/')->path('DOM/HTML');
 
 =head2 path_query
 
   my $path_query = $url->path_query;
+  $url           = $url->path_query('/foo/bar?a=1&b=2');
 
 Normalized version of L</"path"> and L</"query">.
 
@@ -420,16 +418,14 @@ Normalized version of L</"scheme">.
 =head2 query
 
   my $query = $url->query;
-  $url      = $url->query([merge => 'with']);
-  $url      = $url->query({append => 'to'});
+  $url      = $url->query({merge => 'to'});
+  $url      = $url->query([append => 'with']);
   $url      = $url->query(replace => 'with');
   $url      = $url->query('a=1&b=2');
   $url      = $url->query(Mojo::Parameters->new);
 
-Query part of this URL, key/value pairs in an array reference will be merged
-with L<Mojo::Parameters/"merge">, and key/value pairs in a hash reference
-appended with L<Mojo::Parameters/"append">, defaults to a L<Mojo::Parameters>
-object.
+Query part of this URL, key/value pairs in an array reference will be appended with L<Mojo::Parameters/"append">, and
+key/value pairs in a hash reference merged with L<Mojo::Parameters/"merge">, defaults to a L<Mojo::Parameters> object.
 
   # "2"
   Mojo::URL->new('http://example.com?a=1&b=2')->query->param('b');
@@ -444,20 +440,20 @@ object.
   Mojo::URL->new('http://example.com?a=1&b=2')->query(a => [2, 3]);
 
   # "http://example.com?a=2&b=2&c=3"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => 2, c => 3]);
+  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => 2, c => 3});
 
   # "http://example.com?b=2"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => undef]);
+  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => undef});
 
   # "http://example.com?a=1&b=2&a=2&c=3"
-  Mojo::URL->new('http://example.com?a=1&b=2')->query({a => 2, c => 3});
+  Mojo::URL->new('http://example.com?a=1&b=2')->query([a => 2, c => 3]);
 
 =head2 to_abs
 
   my $abs = $url->to_abs;
   my $abs = $url->to_abs(Mojo::URL->new('http://example.com/foo'));
 
-Clone relative URL and turn it into an absolute one using L</"base"> or
+Return a new L<Mojo::URL> object cloned from this relative URL and turn it into an absolute one using L</"base"> or
 provided base URL.
 
   # "http://example.com/foo/baz.xml?test=123"
@@ -476,8 +472,7 @@ provided base URL.
 
   my $str = $url->to_string;
 
-Turn URL into a string. Note that L</"userinfo"> will not be included for
-security reasons.
+Turn URL into a string. Note that L</"userinfo"> will not be included for security reasons.
 
   # "http://mojolicious.org"
   Mojo::URL->new->scheme('http')->host('mojolicious.org')->to_string;
@@ -521,6 +516,6 @@ Alias for L</"to_string">.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

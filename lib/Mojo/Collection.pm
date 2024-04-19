@@ -1,11 +1,12 @@
 package Mojo::Collection;
 use Mojo::Base -strict;
 
-use Carp 'croak';
-use Exporter 'import';
+use re       qw(is_regexp);
+use Carp     qw(croak);
+use Exporter qw(import);
 use List::Util;
 use Mojo::ByteStream;
-use Scalar::Util 'blessed';
+use Scalar::Util qw(blessed);
 
 our @EXPORT_OK = ('c');
 
@@ -29,7 +30,7 @@ sub each {
 sub first {
   my ($self, $cb) = (shift, shift);
   return $self->[0] unless $cb;
-  return List::Util::first { $_ =~ $cb } @$self if ref $cb eq 'Regexp';
+  return List::Util::first { $_ =~ $cb } @$self if is_regexp $cb;
   return List::Util::first { $_->$cb(@_) } @$self;
 }
 
@@ -37,8 +38,15 @@ sub flatten { $_[0]->new(_flatten(@{$_[0]})) }
 
 sub grep {
   my ($self, $cb) = (shift, shift);
-  return $self->new(grep { $_ =~ $cb } @$self) if ref $cb eq 'Regexp';
+  return $self->new(grep { $_ =~ $cb } @$self) if is_regexp $cb;
   return $self->new(grep { $_->$cb(@_) } @$self);
+}
+
+sub head {
+  my ($self, $size) = @_;
+  return $self->new(@$self)                   if $size > @$self;
+  return $self->new(@$self[0 .. ($size - 1)]) if $size >= 0;
+  return $self->new(@$self[0 .. ($#$self + $size)]);
 }
 
 sub join {
@@ -69,11 +77,6 @@ sub shuffle { $_[0]->new(List::Util::shuffle @{$_[0]}) }
 
 sub size { scalar @{$_[0]} }
 
-sub slice {
-  my $self = shift;
-  return $self->new(@$self[@_]);
-}
-
 sub sort {
   my ($self, $cb) = @_;
 
@@ -88,6 +91,13 @@ sub sort {
   return $self->new(@sorted);
 }
 
+sub tail {
+  my ($self, $size) = @_;
+  return $self->new(@$self)                                     if $size > @$self;
+  return $self->new(@$self[($#$self - ($size - 1)) .. $#$self]) if $size >= 0;
+  return $self->new(@$self[(0 - $size) .. $#$self]);
+}
+
 sub tap { shift->Mojo::Base::tap(@_) }
 
 sub to_array { [@{shift()}] }
@@ -95,9 +105,11 @@ sub to_array { [@{shift()}] }
 sub uniq {
   my ($self, $cb) = (shift, shift);
   my %seen;
-  return $self->new(grep { !$seen{$_->$cb(@_)}++ } @$self) if $cb;
-  return $self->new(grep { !$seen{$_}++ } @$self);
+  return $self->new(grep { !$seen{$_->$cb(@_) // ''}++ } @$self) if $cb;
+  return $self->new(grep { !$seen{$_ // ''}++ } @$self);
 }
+
+sub with_roles { shift->Mojo::Base::with_roles(@_) }
 
 sub _flatten {
   map { _ref($_) ? _flatten(@$_) : $_ } @_;
@@ -123,13 +135,12 @@ Mojo::Collection - Collection
   say $collection->join("\n");
 
   # Chain methods
-  $collection->map(sub { ucfirst })->shuffle->each(sub {
-    my ($word, $num) = @_;
+  $collection->map(sub { ucfirst })->shuffle->each(sub ($word, $num) {
     say "$num: $word";
   });
 
   # Use the alternative constructor
-  use Mojo::Collection 'c';
+  use Mojo::Collection qw(c);
   c(qw(a b c))->join('/')->url_escape->say;
 
 =head1 DESCRIPTION
@@ -143,8 +154,7 @@ L<Mojo::Collection> is an array-based container for collections.
 
 =head1 FUNCTIONS
 
-L<Mojo::Collection> implements the following functions, which can be imported
-individually.
+L<Mojo::Collection> implements the following functions, which can be imported individually.
 
 =head2 c
 
@@ -166,8 +176,7 @@ Alias for L</"to_array">.
 
   my $new = $collection->compact;
 
-Create a new collection with all elements that are defined and not an empty
-string.
+Create a new collection with all elements that are defined and not an empty string.
 
   # "0, 1, 2, 3"
   c(0, 1, undef, 2, '', 3)->compact->join(', ');
@@ -177,13 +186,11 @@ string.
   my @elements = $collection->each;
   $collection  = $collection->each(sub {...});
 
-Evaluate callback for each element in collection, or return all elements as a
-list if none has been provided. The element will be the first argument passed
-to the callback, and is also available as C<$_>.
+Evaluate callback for each element in collection, or return all elements as a list if none has been provided. The
+element will be the first argument passed to the callback, and is also available as C<$_>.
 
   # Make a numbered list
-  $collection->each(sub {
-    my ($e, $num) = @_;
+  $collection->each(sub ($e, $num) {
     say "$num: $e";
   });
 
@@ -195,9 +202,8 @@ to the callback, and is also available as C<$_>.
   my $first = $collection->first('some_method');
   my $first = $collection->first('some_method', @args);
 
-Evaluate regular expression/callback for, or call method on, each element in
-collection and return the first one that matched the regular expression, or for
-which the callback/method returned true. The element will be the first argument
+Evaluate regular expression/callback for, or call method on, each element in collection and return the first one that
+matched the regular expression, or for which the callback/method returned true. The element will be the first argument
 passed to the callback, and is also available as C<$_>.
 
   # Longer version
@@ -213,8 +219,7 @@ passed to the callback, and is also available as C<$_>.
 
   my $new = $collection->flatten;
 
-Flatten nested collections/arrays recursively and create a new collection with
-all elements.
+Flatten nested collections/arrays recursively and create a new collection with all elements.
 
   # "1, 2, 3, 4, 5, 6, 7"
   c(1, [2, [3, 4], 5, [6]], 7)->flatten->join(', ');
@@ -226,11 +231,9 @@ all elements.
   my $new = $collection->grep('some_method');
   my $new = $collection->grep('some_method', @args);
 
-Evaluate regular expression/callback for, or call method on, each element in
-collection and create a new collection with all elements that matched the
-regular expression, or for which the callback/method returned true. The element
-will be the first argument passed to the callback, and is also available as
-C<$_>.
+Evaluate regular expression/callback for, or call method on, each element in collection and create a new collection
+with all elements that matched the regular expression, or for which the callback/method returned true. The element will
+be the first argument passed to the callback, and is also available as C<$_>.
 
   # Longer version
   my $new = $collection->grep(sub { $_->some_method(@args) });
@@ -240,6 +243,20 @@ C<$_>.
 
   # Find all values that are greater than 5
   my $greater = $collection->grep(sub { $_ > 5 });
+
+=head2 head
+
+  my $new = $collection->head(4);
+  my $new = $collection->head(-2);
+
+Create a new collection with up to the specified number of elements from the beginning of the collection. A negative
+number will count from the end.
+
+  # "A B C"
+  c('A', 'B', 'C', 'D', 'E')->head(3)->join(' ');
+
+  # "A B"
+  c('A', 'B', 'C', 'D', 'E')->head(-3)->join(' ');
 
 =head2 join
 
@@ -263,9 +280,8 @@ Return the last element in collection.
   my $new = $collection->map('some_method');
   my $new = $collection->map('some_method', @args);
 
-Evaluate callback for, or call method on, each element in collection and create
-a new collection from the results. The element will be the first argument
-passed to the callback, and is also available as C<$_>.
+Evaluate callback for, or call method on, each element in collection and create a new collection from the results. The
+element will be the first argument passed to the callback, and is also available as C<$_>.
 
   # Longer version
   my $new = $collection->map(sub { $_->some_method(@args) });
@@ -284,11 +300,10 @@ Construct a new array-based L<Mojo::Collection> object.
   my $result = $collection->reduce(sub {...});
   my $result = $collection->reduce(sub {...}, $initial);
 
-Reduce elements in collection with a callback and return its final result,
-setting C<$a> and C<$b> each time the callback is executed. The first time C<$a>
-will be set to an optional initial value or the first element in the collection.
-And from then on C<$a> will be set to the return value of the callback, while
-C<$b> will always be set to the next element in the collection.
+Reduce elements in collection with a callback and return its final result, setting C<$a> and C<$b> each time the
+callback is executed. The first time C<$a> will be set to an optional initial value or the first element in the
+collection. And from then on C<$a> will be set to the return value of the callback, while C<$b> will always be set to
+the next element in the collection.
 
   # Calculate the sum of all values
   my $sum = $collection->reduce(sub { $a + $b });
@@ -301,15 +316,6 @@ C<$b> will always be set to the next element in the collection.
   my $new = $collection->reverse;
 
 Create a new collection with all elements in reverse order.
-
-=head2 slice
-
-  my $new = $collection->slice(4 .. 7);
-
-Create a new collection with all selected elements.
-
-  # "B C E"
-  c('A', 'B', 'C', 'D', 'E')->slice(1, 2, 4)->join(' ');
 
 =head2 shuffle
 
@@ -328,12 +334,25 @@ Number of elements in collection.
   my $new = $collection->sort;
   my $new = $collection->sort(sub {...});
 
-Sort elements based on return value of a callback and create a new collection
-from the results, setting C<$a> and C<$b> to the elements being compared, each
-time the callback is executed.
+Sort elements based on return value of a callback and create a new collection from the results, setting C<$a> and C<$b>
+to the elements being compared, each time the callback is executed.
 
   # Sort values case-insensitive
   my $case_insensitive = $collection->sort(sub { uc($a) cmp uc($b) });
+
+=head2 tail
+
+  my $new = $collection->tail(4);
+  my $new = $collection->tail(-2);
+
+Create a new collection with up to the specified number of elements from the end of the collection. A negative number
+will count from the beginning.
+
+  # "C D E"
+  c('A', 'B', 'C', 'D', 'E')->tail(3)->join(' ');
+
+  # "D E"
+  c('A', 'B', 'C', 'D', 'E')->tail(-3)->join(' ');
 
 =head2 tap
 
@@ -354,9 +373,8 @@ Turn collection into array reference.
   my $new = $collection->uniq('some_method');
   my $new = $collection->uniq('some_method', @args);
 
-Create a new collection without duplicate elements, using the string
-representation of either the elements or the return value of the
-callback/method.
+Create a new collection without duplicate elements, using the string representation of either the elements or the
+return value of the callback/method to decide uniqueness. Note that C<undef> and empty string are treated the same.
 
   # Longer version
   my $new = $collection->uniq(sub { $_->some_method(@args) });
@@ -367,8 +385,16 @@ callback/method.
   # "[[1, 2], [2, 1]]"
   c([1, 2], [2, 1], [3, 2])->uniq(sub{ $_->[1] })->to_array;
 
+=head2 with_roles
+
+  my $new_class = Mojo::Collection->with_roles('Mojo::Collection::Role::One');
+  my $new_class = Mojo::Collection->with_roles('+One', '+Two');
+  $collection   = $collection->with_roles('+One', '+Two');
+
+Alias for L<Mojo::Base/"with_roles">.
+
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

@@ -2,17 +2,17 @@ package Mojolicious::Command::prefork;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Server::Prefork;
-use Mojo::Util 'getopt';
+use Mojo::Util qw(getopt);
 
-has description =>
-  'Start application with pre-forking HTTP and WebSocket server';
-has usage => sub { shift->extract_usage };
+has description => 'Start application with pre-forking HTTP and WebSocket server';
+has usage       => sub { shift->extract_usage };
 
-sub run {
+sub build_server {
   my ($self, @args) = @_;
 
   my $prefork = Mojo::Server::Prefork->new(app => $self->app);
-  getopt \@args,
+  die $self->usage
+    unless getopt \@args,
     'a|accepts=i'            => sub { $prefork->accepts($_[1]) },
     'b|backlog=i'            => sub { $prefork->backlog($_[1]) },
     'c|clients=i'            => sub { $prefork->max_clients($_[1]) },
@@ -20,15 +20,22 @@ sub run {
     'I|heartbeat-interval=i' => sub { $prefork->heartbeat_interval($_[1]) },
     'H|heartbeat-timeout=i'  => sub { $prefork->heartbeat_timeout($_[1]) },
     'i|inactivity-timeout=i' => sub { $prefork->inactivity_timeout($_[1]) },
-    'l|listen=s'   => \my @listen,
-    'P|pid-file=s' => sub { $prefork->pid_file($_[1]) },
-    'p|proxy'      => sub { $prefork->reverse_proxy(1) },
-    'r|requests=i' => sub { $prefork->max_requests($_[1]) },
-    'w|workers=i'  => sub { $prefork->workers($_[1]) };
+    'k|keep-alive-timeout=i' => sub { $prefork->keep_alive_timeout($_[1]) },
+    'l|listen=s'             => \my @listen,
+    'P|pid-file=s'           => sub { $prefork->pid_file($_[1]) },
+    'p|proxy:s'              => \my @proxy,
+    'r|requests=i'           => sub { $prefork->max_requests($_[1]) },
+    's|spare=i'              => sub { $prefork->spare($_[1]) },
+    'w|workers=i'            => sub { $prefork->workers($_[1]) };
 
   $prefork->listen(\@listen) if @listen;
-  $prefork->run;
+  $prefork->reverse_proxy(1) if @proxy;
+  my @trusted = grep {length} @proxy;
+  $prefork->trusted_proxies(\@trusted) if @trusted;
+  return $prefork;
 }
+
+sub run { shift->build_server(@_)->run }
 
 1;
 
@@ -43,10 +50,11 @@ Mojolicious::Command::prefork - Pre-fork command
   Usage: APPLICATION prefork [OPTIONS]
 
     ./myapp.pl prefork
-    ./myapp.pl prefork -m production -l http://*:8080
+    ./myapp.pl prefork -m production -p -l http://*:8080
     ./myapp.pl prefork -l http://127.0.0.1:8080 -l https://[::]:8081
     ./myapp.pl prefork -l 'https://*:443?cert=./server.crt&key=./server.key'
-    ./myapp.pl prefork -l http+unix://%2Ftmp%2Fmyapp.sock
+    ./myapp.pl prefork -l http+unix://%2Ftmp%2Fmyapp.sock -w 12
+    ./myapp.pl prefork -l http://127.0.0.1:8080 -p 127.0.0.0/8 -p fc00::/7
 
   Options:
     -a, --accepts <number>               Number of connections for workers to
@@ -55,15 +63,17 @@ Mojolicious::Command::prefork - Pre-fork command
                                          SOMAXCONN
     -c, --clients <number>               Maximum number of concurrent
                                          connections, defaults to 1000
-    -G, --graceful-timeout <seconds>     Graceful timeout, defaults to 20.
+    -G, --graceful-timeout <seconds>     Graceful timeout, defaults to 120.
     -I, --heartbeat-interval <seconds>   Heartbeat interval, defaults to 5
-    -H, --heartbeat-timeout <seconds>    Heartbeat timeout, defaults to 20
+    -H, --heartbeat-timeout <seconds>    Heartbeat timeout, defaults to 50
     -h, --help                           Show this summary of available options
         --home <path>                    Path to home directory of your
                                          application, defaults to the value of
                                          MOJO_HOME or auto-detection
     -i, --inactivity-timeout <seconds>   Inactivity timeout, defaults to the
-                                         value of MOJO_INACTIVITY_TIMEOUT or 15
+                                         value of MOJO_INACTIVITY_TIMEOUT or 30
+    -k, --keep-alive-timeout <seconds>   Keep-alive timeout, defaults to the
+                                         value of MOJO_KEEP_ALIVE_TIMEOUT or 5
     -l, --listen <location>              One or more locations you want to
                                          listen on, defaults to the value of
                                          MOJO_LISTEN or "http://*:3000"
@@ -71,29 +81,31 @@ Mojolicious::Command::prefork - Pre-fork command
                                          defaults to the value of
                                          MOJO_MODE/PLACK_ENV or "development"
     -P, --pid-file <path>                Path to process id file, defaults to
-                                         "prefork.pid" in a temporary diretory
-    -p, --proxy                          Activate reverse proxy support,
+                                         "prefork.pid" in a temporary directory
+    -p, --proxy [<network>]              Activate reverse proxy support,
                                          defaults to the value of
-                                         MOJO_REVERSE_PROXY
+                                         MOJO_REVERSE_PROXY, optionally takes
+                                         one or more trusted proxy addresses or
+                                         networks
     -r, --requests <number>              Maximum number of requests per
                                          keep-alive connection, defaults to 100
+    -s, --spare <number>                 Temporarily spawn up to this number of
+                                         additional workers, defaults to 2
     -w, --workers <number>               Number of workers, defaults to 4
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::prefork> starts applications with the
-L<Mojo::Server::Prefork> backend.
+L<Mojolicious::Command::prefork> starts applications with the L<Mojo::Server::Prefork> backend.
 
-This is a core command, that means it is always enabled and its code a good
-example for learning to build new commands, you're welcome to fork it.
+This is a core command, that means it is always enabled and its code a good example for learning to build new commands,
+you're welcome to fork it.
 
-See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are
-available by default.
+See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::prefork> inherits all attributes from
-L<Mojolicious::Command> and implements the following new ones.
+L<Mojolicious::Command::prefork> inherits all attributes from L<Mojolicious::Command> and implements the following new
+ones.
 
 =head2 description
 
@@ -111,8 +123,14 @@ Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::prefork> inherits all methods from
-L<Mojolicious::Command> and implements the following new ones.
+L<Mojolicious::Command::prefork> inherits all methods from L<Mojolicious::Command> and implements the following new
+ones.
+
+=head2 build_server
+
+  my $server = $daemon->build_server(@ARGV);
+
+Build L<Mojo::Server::Prefork> instance from command line arguments.
 
 =head2 run
 
@@ -122,6 +140,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

@@ -3,17 +3,17 @@ use Mojo::Base -base;
 
 has 'data';
 
-sub contains { shift->_pointer(1, @_) }
-sub get      { shift->_pointer(0, @_) }
+sub contains { shift->_pointer(0, @_) }
+sub get      { shift->_pointer(1, @_) }
 
 sub new { @_ > 1 ? shift->SUPER::new(data => shift) : shift->SUPER::new }
 
 sub _pointer {
-  my ($self, $contains, $pointer) = @_;
+  my ($self, $get, $pointer) = @_;
 
   my $data = $self->data;
-  return $contains ? 1 : $data unless $pointer =~ s!^/!!;
-  for my $p (length $pointer ? (split '/', $pointer, -1) : ($pointer)) {
+  return length $pointer ? undef : $get ? $data : 1 unless $pointer =~ s!^/!!;
+  for my $p (length $pointer ? (split /\//, $pointer, -1) : ($pointer)) {
     $p =~ s!~1!/!g;
     $p =~ s/~0/~/g;
 
@@ -21,15 +21,13 @@ sub _pointer {
     if (ref $data eq 'HASH' && exists $data->{$p}) { $data = $data->{$p} }
 
     # Array
-    elsif (ref $data eq 'ARRAY' && $p =~ /^\d+$/ && @$data > $p) {
-      $data = $data->[$p];
-    }
+    elsif (ref $data eq 'ARRAY' && $p =~ /^\d+$/ && @$data > $p) { $data = $data->[$p] }
 
     # Nothing
     else { return undef }
   }
 
-  return $contains ? 1 : $data;
+  return $get ? $data : 1;
 }
 
 1;
@@ -50,8 +48,7 @@ Mojo::JSON::Pointer - JSON Pointers
 
 =head1 DESCRIPTION
 
-L<Mojo::JSON::Pointer> is an implementation of
-L<RFC 6901|http://tools.ietf.org/html/rfc6901>.
+L<Mojo::JSON::Pointer> is an implementation of L<RFC 6901|https://tools.ietf.org/html/rfc6901>.
 
 =head1 ATTRIBUTES
 
@@ -66,15 +63,13 @@ Data structure to be processed.
 
 =head1 METHODS
 
-L<Mojo::JSON::Pointer> inherits all methods from L<Mojo::Base> and implements
-the following new ones.
+L<Mojo::JSON::Pointer> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 contains
 
   my $bool = $pointer->contains('/foo/1');
 
-Check if L</"data"> contains a value that can be identified with the given JSON
-Pointer.
+Check if L</"data"> contains a value that can be identified with the given JSON Pointer.
 
   # True
   Mojo::JSON::Pointer->new('just a string')->contains('');
@@ -117,6 +112,6 @@ Build new L<Mojo::JSON::Pointer> object.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

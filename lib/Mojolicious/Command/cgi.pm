@@ -2,14 +2,14 @@ package Mojolicious::Command::cgi;
 use Mojo::Base 'Mojolicious::Command';
 
 use Mojo::Server::CGI;
-use Mojo::Util 'getopt';
+use Mojo::Util qw(getopt);
 
 has description => 'Start application with CGI';
-has usage => sub { shift->extract_usage };
+has usage       => sub { shift->extract_usage };
 
 sub run {
   my ($self, @args) = @_;
-  getopt \@args, nph => \(my $nph = 0);
+  die $self->usage unless getopt \@args, nph => \(my $nph = 0);
   Mojo::Server::CGI->new(app => $self->app, nph => $nph)->run;
 }
 
@@ -37,19 +37,17 @@ Mojolicious::Command::cgi - CGI command
 
 =head1 DESCRIPTION
 
-L<Mojolicious::Command::cgi> starts applications with the L<Mojo::Server::CGI>
-backend.
+L<Mojolicious::Command::cgi> starts applications with the L<Mojo::Server::CGI> backend.
 
-This is a core command, that means it is always enabled and its code a good
-example for learning to build new commands, you're welcome to fork it.
+This is a core command, that means it is always enabled and its code a good example for learning to build new commands,
+you're welcome to fork it.
 
-See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are
-available by default.
+See L<Mojolicious::Commands/"COMMANDS"> for a list of commands that are available by default.
 
 =head1 ATTRIBUTES
 
-L<Mojolicious::Command::cgi> inherits all attributes from
-L<Mojolicious::Command> and implements the following new ones.
+L<Mojolicious::Command::cgi> inherits all attributes from L<Mojolicious::Command> and implements the following new
+ones.
 
 =head2 description
 
@@ -67,8 +65,7 @@ Usage information for this command, used for the help screen.
 
 =head1 METHODS
 
-L<Mojolicious::Command::cgi> inherits all methods from L<Mojolicious::Command>
-and implements the following new ones.
+L<Mojolicious::Command::cgi> inherits all methods from L<Mojolicious::Command> and implements the following new ones.
 
 =head2 run
 
@@ -78,6 +75,6 @@ Run this command.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

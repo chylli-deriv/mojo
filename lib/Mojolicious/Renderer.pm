@@ -1,36 +1,41 @@
 package Mojolicious::Renderer;
 use Mojo::Base -base;
 
+use Carp qw(croak);
 use Mojo::Cache;
-use Mojo::File 'path';
-use Mojo::JSON 'encode_json';
-use Mojo::Home;
-use Mojo::Loader 'data_section';
-use Mojo::Util qw(decamelize encode md5_sum monkey_patch);
+use Mojo::DynamicMethods;
+use Mojo::File   qw(curfile path);
+use Mojo::JSON   qw(encode_json);
+use Mojo::Loader qw(data_section);
+use Mojo::Util   qw(decamelize deprecated encode gzip md5_sum monkey_patch);
 
-has cache   => sub { Mojo::Cache->new };
-has classes => sub { ['main'] };
+has cache          => sub { Mojo::Cache->new };
+has classes        => sub { ['main'] };
+has compress       => 1;
 has default_format => 'html';
 has 'default_handler';
-has encoding => 'UTF-8';
+has encoding               => 'UTF-8';
 has [qw(handlers helpers)] => sub { {} };
-has paths => sub { [] };
+has min_compress_size      => 860;
+has paths                  => sub { [] };
 
 # Bundled templates
-my $TEMPLATES = Mojo::Home->new(Mojo::Home->new->mojo_lib_dir)
-  ->child('Mojolicious', 'resources', 'templates');
+my $TEMPLATES = curfile->sibling('resources', 'templates');
 
 sub DESTROY { Mojo::Util::_teardown($_) for @{shift->{namespaces}} }
 
 sub accepts {
   my ($self, $c) = (shift, shift);
 
+  # DEPRECATED!
+  my $req   = $c->req;
+  my $param = $req->param('format');
+  deprecated 'The ?format=* parameter is deprecated in favor of ?_format=* for content negotiation' if defined $param;
+
   # List representations
-  my $req = $c->req;
-  my @exts = @{$c->app->types->detect($req->headers->accept, $req->is_xhr)};
-  if (!@exts && (my $format = $c->stash->{format} || $req->param('format'))) {
-    push @exts, $format;
-  }
+  my $fmt  = $param // $req->param('_format') || $c->stash->{format};
+  my @exts = $fmt ? ($fmt) : ();
+  push @exts, @{$c->app->types->detect($req->headers->accept)};
   return \@exts unless @_;
 
   # Find best representation
@@ -42,8 +47,12 @@ sub add_handler { $_[0]->handlers->{$_[1]} = $_[2] and return $_[0] }
 
 sub add_helper {
   my ($self, $name, $cb) = @_;
+
   $self->helpers->{$name} = $cb;
   delete $self->{proxy};
+  $cb = $self->get_helper($name) if $name =~ s/\..*$//;
+  Mojo::DynamicMethods::register $_, $self, $name, $cb for qw(Mojolicious Mojolicious::Controller);
+
   return $self;
 }
 
@@ -60,7 +69,7 @@ sub get_helper {
 
   my $found;
   my $class = 'Mojolicious::Renderer::Helpers::' . md5_sum "$name:$self";
-  my $re = length $name ? qr/^(\Q$name\E\.([^.]+))/ : qr/^(([^.]+))/;
+  my $re    = length $name ? qr/^(\Q$name\E\.([^.]+))/ : qr/^(([^.]+))/;
   for my $key (keys %{$self->helpers}) {
     $key =~ $re ? ($found, my $method) = (1, $2) : next;
     my $sub = $self->get_helper($1);
@@ -72,20 +81,9 @@ sub get_helper {
 }
 
 sub render {
-  my ($self, $c, $args) = @_;
+  my ($self, $c) = @_;
 
-  # Localize "extends" and "layout" to allow argument overrides
-  my $stash = $c->stash;
-  local $stash->{layout}  = $stash->{layout}  if exists $stash->{layout};
-  local $stash->{extends} = $stash->{extends} if exists $stash->{extends};
-
-  # Rendering to string
-  local @{$stash}{keys %$args} if my $string = delete $args->{'mojo.string'};
-  delete @{$stash}{qw(layout extends)} if $string;
-
-  # All other arguments just become part of the stash
-  @$stash{keys %$args} = values %$args;
-
+  my $stash   = $c->stash;
   my $options = {
     encoding => $self->encoding,
     handler  => $stash->{handler},
@@ -100,8 +98,7 @@ sub render {
   return delete $stash->{data}, $options->{format} if defined $stash->{data};
 
   # Text
-  return _maybe($options->{encoding}, delete $stash->{text}), $options->{format}
-    if defined $stash->{text};
+  return _maybe($options->{encoding}, delete $stash->{text}), $options->{format} if defined $stash->{text};
 
   # JSON
   return encode_json(delete $stash->{json}), 'json' if exists $stash->{json};
@@ -111,9 +108,8 @@ sub render {
   return () unless $self->_render_template($c, \my $output, $options);
 
   # Inheritance
-  my $content = $stash->{'mojo.content'} ||= {};
-  local $content->{content} = $output =~ /\S/ ? $output : undef
-    if $stash->{extends} || $stash->{layout};
+  my $content = $stash->{'mojo.content'} //= {};
+  local $content->{content} = $output =~ /\S/ ? $output : undef if $stash->{extends} || $stash->{layout};
   while ((my $next = _next($stash)) && !defined $inline) {
     @$options{qw(handler template)} = ($stash->{handler}, $next);
     $options->{format} = $stash->{format} || $self->default_format;
@@ -121,8 +117,30 @@ sub render {
     $content->{content} //= $output if $output =~ /\S/;
   }
 
-  return $string ? $output : _maybe($options->{encoding}, $output),
-    $options->{format};
+  return $output if $stash->{'mojo.string'};
+  return _maybe($options->{encoding}, $output), $options->{format};
+}
+
+sub respond {
+  my ($self, $c, $output, $format, $status) = @_;
+
+  croak 'A response has already been rendered' if $c->stash->{'mojo.respond'}++;
+
+  # Gzip compression
+  my $res = $c->res;
+  if ($self->compress && length($output) >= $self->min_compress_size) {
+    my $headers = $res->headers;
+    $headers->append(Vary => 'Accept-Encoding');
+    my $gzip = ($c->req->headers->accept_encoding // '') =~ /gzip/i;
+    if ($gzip && !$headers->content_encoding) {
+      $headers->content_encoding('gzip');
+      $output = gzip $output;
+    }
+  }
+
+  $res->body($output);
+  $c->app->types->content_type($c, {ext => $format});
+  return !!$c->rendered($status);
 }
 
 sub template_for {
@@ -131,8 +149,7 @@ sub template_for {
   # Normal default template
   my $stash = $c->stash;
   my ($controller, $action) = @$stash{qw(controller action)};
-  return join '/', split('-', decamelize $controller), $action
-    if $controller && $action;
+  return join '/', split(/-/, decamelize $controller), $action if $controller && $action;
 
   # Try the route name if we don't have controller and action
   return undef unless my $route = $c->match->endpoint;
@@ -141,7 +158,7 @@ sub template_for {
 
 sub template_handler {
   my ($self, $options) = @_;
-  return undef unless my $file = $self->template_name($options);
+  return undef                  unless my $file     = $self->template_name($options);
   return $self->default_handler unless my $handlers = $self->{templates}{$file};
   return $handlers->[0];
 }
@@ -160,8 +177,7 @@ sub template_name {
   if (defined(my $variant = $options->{variant})) {
     $variant = "$template+$variant";
     my $handlers = $self->{templates}{$variant} // [];
-    $template = $variant
-      if @$handlers && !defined $handler || grep { $_ eq $handler } @$handlers;
+    $template = $variant if @$handlers && !defined $handler || grep { $_ eq $handler } @$handlers;
   }
 
   return defined $handler ? "$template.$handler" : $template;
@@ -170,9 +186,8 @@ sub template_name {
 sub template_path {
   my ($self, $options) = @_;
   return undef unless my $name = $self->template_name($options);
-  my @parts = split '/', $name;
-  -r and return $_
-    for map { path($_, @parts)->to_string } @{$self->paths}, $TEMPLATES;
+  my @parts = split /\//, $name;
+  -r and return $_ for map { path($_, @parts)->to_string } @{$self->paths}, $TEMPLATES;
   return undef;
 }
 
@@ -184,8 +199,7 @@ sub warmup {
   # Handlers for templates
   for my $path (@{$self->paths}, $TEMPLATES) {
     s/\.(\w+)$// and push @{$templates->{$_}}, $1
-      for path($path)->list_tree->map(sub { join '/', @{$_->to_rel($path)} })
-      ->each;
+      for path($path)->list_tree->map(sub { join '/', @{$_->to_rel($path)} })->each;
   }
 
   # Handlers and classes for DATA templates
@@ -209,7 +223,7 @@ sub _render_template {
 
   my $handler = $options->{handler} ||= $self->template_handler($options);
   return undef unless $handler;
-  $c->app->log->error(qq{No handler for "$handler" available}) and return undef
+  $c->helpers->log->error(qq{No handler for "$handler" found}) and return undef
     unless my $renderer = $self->handlers->{$handler};
 
   $renderer->($self, $c, $output, $options);
@@ -254,12 +268,10 @@ Renderer cache, defaults to a L<Mojo::Cache> object.
   my $classes = $renderer->classes;
   $renderer   = $renderer->classes(['main']);
 
-Classes to use for finding templates in C<DATA> sections with L<Mojo::Loader>,
-first one has the highest precedence, defaults to C<main>. Only files with
-exactly two extensions will be used, like C<index.html.ep>. Note that for
-templates to be detected, these classes need to have already been loaded and
-added before L</"warmup"> is called, which usually happens automatically during
-application startup.
+Classes to use for finding templates in C<DATA> sections with L<Mojo::Loader>, first one has the highest precedence,
+defaults to C<main>. Only files with exactly two extensions will be used, like C<index.html.ep>. Note that for
+templates to be detected, these classes need to have already been loaded and added before L</"warmup"> is called, which
+usually happens automatically during application startup.
 
   # Add another class with templates in DATA section
   push @{$renderer->classes}, 'Mojolicious::Plugin::Fun';
@@ -267,30 +279,38 @@ application startup.
   # Add another class with templates in DATA section and higher precedence
   unshift @{$renderer->classes}, 'Mojolicious::Plugin::MoreFun';
 
+=head2 compress
+
+  my $bool  = $renderer->compress;
+  $renderer = $renderer->compress($bool);
+
+Try to negotiate compression for dynamically generated response content and C<gzip> compress it automatically, defaults
+to true.
+
 =head2 default_format
 
   my $default = $renderer->default_format;
   $renderer   = $renderer->default_format('html');
 
-The default format to render if C<format> is not set in the stash, defaults to
-C<html>.
+The default format to render if C<format> is not set in the stash, defaults to C<html>. Note that changing the default
+away from C<html> is not recommended, as it has the potential to break, for example, plugins with bundled templates.
 
 =head2 default_handler
 
   my $default = $renderer->default_handler;
   $renderer   = $renderer->default_handler('ep');
 
-The default template handler to use for rendering in cases where auto-detection
-doesn't work, like for C<inline> templates.
+The default template handler to use for rendering in cases where auto-detection doesn't work, like for C<inline>
+templates.
 
 =head2 encoding
 
   my $encoding = $renderer->encoding;
   $renderer    = $renderer->encoding('koi8-r');
 
-Will encode generated content if set, defaults to C<UTF-8>. Note that many
-renderers such as L<Mojolicious::Plugin::EPRenderer> also use this value to
-determine if template files should be decoded before processing.
+Will encode generated content if set, defaults to C<UTF-8>. Note that many renderers such as
+L<Mojolicious::Plugin::EPRenderer> also use this value to determine if template files should be decoded before
+processing.
 
 =head2 handlers
 
@@ -305,6 +325,13 @@ Registered handlers.
   $renderer   = $renderer->helpers({url_for => sub {...}});
 
 Registered helpers.
+
+=head2 min_compress_size
+
+  my $size  = $renderer->min_compress_size;
+  $renderer = $renderer->min_compress_size(1024);
+
+Minimum output size in bytes required for compression to be used if enabled, defaults to C<860>.
 
 =head2 paths
 
@@ -321,21 +348,16 @@ Directories to look for templates in, first one has the highest precedence.
 
 =head1 METHODS
 
-L<Mojolicious::Renderer> inherits all methods from L<Mojo::Base> and implements
-the following new ones.
+L<Mojolicious::Renderer> inherits all methods from L<Mojo::Base> and implements the following new ones.
 
 =head2 accepts
 
   my $all  = $renderer->accepts(Mojolicious::Controller->new);
   my $best = $renderer->accepts(Mojolicious::Controller->new, 'html', 'json');
 
-Select best possible representation for L<Mojolicious::Controller> object from
-C<Accept> request header, C<format> stash value or C<format> C<GET>/C<POST>
-parameter, defaults to returning the first extension if no preference could be
-detected. Since browsers often don't really know what they actually want,
-unspecific C<Accept> request headers with more than one MIME type will be
-ignored, unless the C<X-Requested-With> header is set to the value
-C<XMLHttpRequest>.
+Select best possible representation for L<Mojolicious::Controller> object from C<format> C<GET>/C<POST> parameter,
+C<format> stash value, or C<Accept> request header, defaults to returning the first extension if no preference could be
+detected.
 
 =head2 add_handler
 
@@ -343,8 +365,7 @@ C<XMLHttpRequest>.
 
 Register a handler.
 
-  $renderer->add_handler(foo => sub {
-    my ($renderer, $c, $output, $options) = @_;
+  $renderer->add_handler(foo => sub ($renderer, $c, $output, $options) {
     ...
     $$output = 'Hello World!';
   });
@@ -355,8 +376,7 @@ Register a handler.
 
 Register a helper.
 
-  $renderer->add_helper(foo => sub {
-    my ($c, @args) = @_;
+  $renderer->add_helper(foo => sub ($c, @args) {
     ...
   });
 
@@ -368,35 +388,36 @@ Register a helper.
     handler        => 'epl'
   });
 
-Return a C<DATA> section template from L</"classes"> for an options hash
-reference with C<template>, C<format>, C<variant> and C<handler> values, or
-C<undef> if no template could be found, usually used by handlers.
+Return a C<DATA> section template from L</"classes"> for an options hash reference with C<template>, C<format>,
+C<variant> and C<handler> values, or C<undef> if no template could be found, usually used by handlers.
 
 =head2 get_helper
 
   my $helper = $renderer->get_helper('url_for');
 
-Get a helper by full name, generate a helper dynamically for a prefix, or return
-C<undef> if no helper or prefix could be found. Generated helpers return a
-proxy object containing the current controller object and on which nested
-helpers can be called.
+Get a helper by full name, generate a helper dynamically for a prefix, or return C<undef> if no helper or prefix could
+be found. Generated helpers return a proxy object containing the current controller object and on which nested helpers
+can be called.
 
 =head2 render
 
-  my ($output, $format) = $renderer->render(Mojolicious::Controller->new, {
-    template => 'foo/bar',
-    foo      => 'bar'
-  });
+  my ($output, $format) = $renderer->render(Mojolicious::Controller->new);
 
-Render output through one of the renderers. See
-L<Mojolicious::Controller/"render"> for a more user-friendly interface.
+Render output through one of the renderers. See L<Mojolicious::Controller/"render"> for a more user-friendly interface.
+
+=head2 respond
+
+  my $bool = $renderer->respond(Mojolicious::Controller->new, $output, $format);
+  my $bool = $renderer->respond(
+    Mojolicious::Controller->new, $output, $format, $status);
+
+Finalize dynamically generated response content and L</"compress"> it if possible.
 
 =head2 template_for
 
   my $name = $renderer->template_for(Mojolicious::Controller->new);
 
-Return default template name for L<Mojolicious::Controller> object, or C<undef>
-if no name could be generated.
+Return default template name for L<Mojolicious::Controller> object, or C<undef> if no name could be generated.
 
 =head2 template_handler
 
@@ -405,8 +426,8 @@ if no name could be generated.
     format   => 'html'
   });
 
-Return handler for an options hash reference with C<template>, C<format> and
-C<variant> values, or C<undef> if no handler could be found.
+Return handler for an options hash reference with C<template>, C<format> and C<variant> values, or C<undef> if no
+handler could be found.
 
 =head2 template_name
 
@@ -416,9 +437,8 @@ C<variant> values, or C<undef> if no handler could be found.
     handler  => 'epl'
   });
 
-Return a template name for an options hash reference with C<template>,
-C<format>, C<variant> and C<handler> values, or C<undef> if no template could be
-found, usually used by handlers.
+Return a template name for an options hash reference with C<template>, C<format>, C<variant> and C<handler> values, or
+C<undef> if no template could be found, usually used by handlers.
 
 =head2 template_path
 
@@ -428,9 +448,8 @@ found, usually used by handlers.
     handler  => 'epl'
   });
 
-Return the full template path for an options hash reference with C<template>,
-C<format>, C<variant> and C<handler> values, or C<undef> if the file does not
-exist in L</"paths">, usually used by handlers.
+Return the full template path for an options hash reference with C<template>, C<format>, C<variant> and C<handler>
+values, or C<undef> if the file does not exist in L</"paths">, usually used by handlers.
 
 =head2 warmup
 
@@ -440,6 +459,6 @@ Prepare templates from L</"classes"> for future use.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

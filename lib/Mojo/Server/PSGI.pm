@@ -34,7 +34,7 @@ sub to_psgi_app {
   my $self = shift;
 
   # Preload application and wrap it
-  $self->app;
+  $self->app->server($self);
   return sub { $self->run(@_) }
 }
 
@@ -74,8 +74,7 @@ Mojo::Server::PSGI - PSGI server
   use Mojo::Server::PSGI;
 
   my $psgi = Mojo::Server::PSGI->new;
-  $psgi->unsubscribe('request')->on(request => sub {
-    my ($psgi, $tx) = @_;
+  $psgi->unsubscribe('request')->on(request => sub ($psgi, $tx) {
 
     # Request
     my $method = $tx->req->method;
@@ -93,8 +92,7 @@ Mojo::Server::PSGI - PSGI server
 
 =head1 DESCRIPTION
 
-L<Mojo::Server::PSGI> allows L<Mojolicious> applications to run on all L<PSGI>
-compatible servers.
+L<Mojo::Server::PSGI> allows L<Mojolicious> applications to run on all L<PSGI> compatible servers.
 
 See L<Mojolicious::Guides::Cookbook/"DEPLOYMENT"> for more.
 
@@ -108,8 +106,7 @@ L<Mojo::Server::PSGI> inherits all attributes from L<Mojo::Server>.
 
 =head1 METHODS
 
-L<Mojo::Server::PSGI> inherits all methods from L<Mojo::Server> and implements
-the following new ones.
+L<Mojo::Server::PSGI> inherits all methods from L<Mojo::Server> and implements the following new ones.
 
 =head2 run
 
@@ -121,10 +118,10 @@ Run L<PSGI>.
 
   my $app = $psgi->to_psgi_app;
 
-Turn L<Mojo> application into L<PSGI> application.
+Turn L<Mojolicious> application into L<PSGI> application.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut

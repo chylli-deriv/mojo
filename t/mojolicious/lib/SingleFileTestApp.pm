@@ -17,7 +17,7 @@ sub startup {
   push @{$self->static->classes},   'SingleFileTestApp::Foo';
 
   # Helper route
-  $self->routes->route('/helper')->to(
+  $self->routes->any('/helper')->to(
     cb => sub {
       my $c = shift;
       $c->render(text => $c->some_plugin);
@@ -25,11 +25,20 @@ sub startup {
   );
 
   # The default route
-  $self->routes->route('/:controller/:action')->to(action => 'index');
+  my $r = $self->routes;
+  $r->any('/foo')->to('Foo#index');
+  $r->any('/foo/conf')->to('Foo#conf');
+  $r->any('/foo/data_static')->to('Foo#data_static');
+  $r->any('/foo/data_template')->to('Foo#data_template');
+  $r->any('/foo/data_template2')->to('Foo#data_template2');
+  $r->any('/foo/routes')->to('Foo#routes');
+  $r->any('/redispatch')->to('Redispatch#index');
+  $r->any('/redispatch/render')->to('Redispatch#render');
+  $r->any('/redispatch/secret')->to('Redispatch#secret');
 }
 
 package SingleFileTestApp::Redispatch;
-use Mojo::Base 'Mojo';
+use Mojo::Base 'Mojolicious';
 
 sub handler {
   my ($self, $c) = @_;

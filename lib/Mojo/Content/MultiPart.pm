@@ -1,21 +1,20 @@
 package Mojo::Content::MultiPart;
 use Mojo::Base 'Mojo::Content';
 
-use Mojo::Util 'b64_encode';
+use Mojo::Util qw(b64_encode);
 
 has parts => sub { [] };
 
 sub body_contains {
   my ($self, $chunk) = @_;
-  ($_->headers_contain($chunk) or $_->body_contains($chunk)) and return 1
-    for @{$self->parts};
+  ($_->headers_contain($chunk) or $_->body_contains($chunk)) and return 1 for @{$self->parts};
   return undef;
 }
 
 sub body_size {
   my $self = shift;
 
-  # Check for existing Content-Lenght header
+  # Check for existing Content-Length header
   if (my $len = $self->headers->content_length) { return $len }
 
   # Calculate length of whole body
@@ -41,9 +40,8 @@ sub build_boundary {
 
   # Add boundary to Content-Type header
   my $headers = $self->headers;
-  ($headers->content_type // '') =~ m!^(.*multipart/[^;]+)(.*)$!;
-  my $before = $1 || 'multipart/mixed';
-  my $after  = $2 || '';
+  my ($before, $after) = ('multipart/mixed', '');
+  ($before, $after) = ($1, $2) if ($headers->content_type // '') =~ m!^(.*multipart/[^;]+)(.*)$!;
   $headers->content_type("$before; boundary=$boundary$after");
 
   return $boundary;
@@ -59,29 +57,31 @@ sub get_body_chunk {
   my ($self, $offset) = @_;
 
   # Body generator
-  return $self->generate_body_chunk($offset) if $self->{dynamic};
+  return $self->generate_body_chunk($offset) if $self->is_dynamic;
 
   # First boundary
-  my $boundary     = $self->build_boundary;
+  my $boundary     = $self->{boundary} //= $self->build_boundary;
   my $boundary_len = length($boundary) + 6;
   my $len          = $boundary_len - 2;
   return substr "--$boundary\x0d\x0a", $offset if $len > $offset;
 
+  # Skip parts that have already been processed
+  my $start = 0;
+  ($len, $start) = ($self->{last_len}, $self->{last_part} + 1) if $self->{offset} && $offset > $self->{offset};
+
   # Prepare content part by part
   my $parts = $self->parts;
-  for (my $i = 0; $i < @$parts; $i++) {
+  for (my $i = $start; $i < @$parts; $i++) {
     my $part = $parts->[$i];
 
     # Headers
     my $header_len = $part->header_size;
-    return $part->get_header_chunk($offset - $len)
-      if ($len + $header_len) > $offset;
+    return $part->get_header_chunk($offset - $len) if ($len + $header_len) > $offset;
     $len += $header_len;
 
     # Content
     my $content_len = $part->body_size;
-    return $part->get_body_chunk($offset - $len)
-      if ($len + $content_len) > $offset;
+    return $part->get_body_chunk($offset - $len) if ($len + $content_len) > $offset;
     $len += $content_len;
 
     # Boundary
@@ -89,9 +89,10 @@ sub get_body_chunk {
       $boundary .= '--';
       $boundary_len += 2;
     }
-    return substr "\x0d\x0a--$boundary\x0d\x0a", $offset - $len
-      if ($len + $boundary_len) > $offset;
+    return substr "\x0d\x0a--$boundary\x0d\x0a", $offset - $len if ($len + $boundary_len) > $offset;
     $len += $boundary_len;
+
+    @{$self}{qw(last_len last_part offset)} = ($len, $i, $offset);
   }
 }
 
@@ -169,24 +170,17 @@ sub _read {
   until (($self->{multi_state} //= 'multipart_preamble') eq 'finished') {
 
     # Preamble
-    if ($self->{multi_state} eq 'multipart_preamble') {
-      last unless $self->_parse_multipart_preamble($boundary);
-    }
+    if ($self->{multi_state} eq 'multipart_preamble') { last unless $self->_parse_multipart_preamble($boundary) }
 
     # Boundary
-    elsif ($self->{multi_state} eq 'multipart_boundary') {
-      last unless $self->_parse_multipart_boundary($boundary);
-    }
+    elsif ($self->{multi_state} eq 'multipart_boundary') { last unless $self->_parse_multipart_boundary($boundary) }
 
     # Body
-    elsif ($self->{multi_state} eq 'multipart_body') {
-      last unless $self->_parse_multipart_body($boundary);
-    }
+    elsif ($self->{multi_state} eq 'multipart_body') { last unless $self->_parse_multipart_body($boundary) }
   }
 
   # Check buffer size
-  @$self{qw(state limit)} = ('finished', 1)
-    if length($self->{multipart} // '') > $self->max_buffer_size;
+  @$self{qw(state limit)} = ('finished', 1) if length($self->{multipart} // '') > $self->max_buffer_size;
 }
 
 1;
@@ -207,48 +201,39 @@ Mojo::Content::MultiPart - HTTP multipart content
 
 =head1 DESCRIPTION
 
-L<Mojo::Content::MultiPart> is a container for HTTP multipart content, based on
-L<RFC 7230|http://tools.ietf.org/html/rfc7230>,
-L<RFC 7231|http://tools.ietf.org/html/rfc7231> and
-L<RFC 2388|http://tools.ietf.org/html/rfc2388>.
+L<Mojo::Content::MultiPart> is a container for HTTP multipart content, based on L<RFC
+7230|https://tools.ietf.org/html/rfc7230>, L<RFC 7231|https://tools.ietf.org/html/rfc7231> and L<RFC
+2388|https://tools.ietf.org/html/rfc2388>.
 
 =head1 EVENTS
 
-L<Mojo::Content::Multipart> inherits all events from L<Mojo::Content> and can
-emit the following new ones.
+L<Mojo::Content::MultiPart> inherits all events from L<Mojo::Content> and can emit the following new ones.
 
 =head2 part
 
-  $multi->on(part => sub {
-    my ($multi, $single) = @_;
-    ...
-  });
+  $multi->on(part => sub ($multi, $single) {...});
 
 Emitted when a new L<Mojo::Content::Single> part starts.
 
-  $multi->on(part => sub {
-    my ($multi, $single) = @_;
+  $multi->on(part => sub ($multi, $single) {
     return unless $single->headers->content_disposition =~ /name="([^"]+)"/;
     say "Field: $1";
   });
 
 =head1 ATTRIBUTES
 
-L<Mojo::Content::MultiPart> inherits all attributes from L<Mojo::Content> and
-implements the following new ones.
+L<Mojo::Content::MultiPart> inherits all attributes from L<Mojo::Content> and implements the following new ones.
 
 =head2 parts
 
   my $parts = $multi->parts;
   $multi    = $multi->parts([Mojo::Content::Single->new]);
 
-Content parts embedded in this multipart content, usually
-L<Mojo::Content::Single> objects.
+Content parts embedded in this multipart content, usually L<Mojo::Content::Single> objects.
 
 =head1 METHODS
 
-L<Mojo::Content::MultiPart> inherits all methods from L<Mojo::Content> and
-implements the following new ones.
+L<Mojo::Content::MultiPart> inherits all methods from L<Mojo::Content> and implements the following new ones.
 
 =head2 body_contains
 
@@ -272,15 +257,14 @@ Generate a suitable boundary for content and add it to C<Content-Type> header.
 
   my $clone = $multi->clone;
 
-Clone content if possible, otherwise return C<undef>.
+Return a new L<Mojo::Content::MultiPart> object cloned from this content if possible, otherwise return C<undef>.
 
 =head2 get_body_chunk
 
   my $bytes = $multi->get_body_chunk(0);
 
-Get a chunk of content starting from a specific position. Note that it might
-not be possible to get the same chunk twice if content was generated
-dynamically.
+Get a chunk of content starting from a specific position. Note that it might not be possible to get the same chunk
+twice if content was generated dynamically.
 
 =head2 is_multipart
 
@@ -296,11 +280,11 @@ True, this is a L<Mojo::Content::MultiPart> object.
   my $multi
     = Mojo::Content::MultiPart->new({parts => [Mojo::Content::Single->new]});
 
-Construct a new L<Mojo::Content::MultiPart> object and subscribe to L</"read">
-event with default content parser.
+Construct a new L<Mojo::Content::MultiPart> object and subscribe to event L<Mojo::Content/"read"> with default content
+parser.
 
 =head1 SEE ALSO
 
-L<Mojolicious>, L<Mojolicious::Guides>, L<http://mojolicious.org>.
+L<Mojolicious>, L<Mojolicious::Guides>, L<https://mojolicious.org>.
 
 =cut
