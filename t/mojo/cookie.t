@@ -174,7 +174,7 @@ subtest 'Full response cookie as string' => sub {
   $cookie->httponly(1);
   $cookie->samesite('Lax');
   is $cookie->to_string, '0="ba r"; expires=Thu, 07 Aug 2008 07:07:59 GMT; domain=example.com;'
-    . ' path=/test; secure; HttpOnly; SameSite=Lax; Max-Age=60', 'right format';
+    . ' path=/test; SameSite=Lax; secure; HttpOnly; SameSite=Lax; Max-Age=60', 'right format';
 };
 
 subtest 'Empty response cookie' => sub {
