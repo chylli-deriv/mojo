@@ -104,6 +104,11 @@ sub _build_tx {
 
       # Last keep-alive request or corrupted connection
       my $c = $self->{connections}{$id};
+
+      unless ($c) {
+          $tx->emit(client_disconnect => $id);
+          return;
+      }
       $tx->res->headers->connection('close') if ($c->{requests} || 1) >= $self->max_requests || $req->error;
 
       $tx->on(resume => sub { $self->_write($id) });

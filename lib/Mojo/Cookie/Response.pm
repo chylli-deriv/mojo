@@ -4,7 +4,7 @@ use Mojo::Base 'Mojo::Cookie';
 use Mojo::Date;
 use Mojo::Util qw(quote split_cookie_header);
 
-has [qw(domain expires host_only httponly max_age path samesite secure)];
+has [qw(domain expires host_only httponly max_age origin path samesite secure)];
 
 my %ATTRS = map { $_ => 1 } qw(domain expires httponly max-age path samesite secure);
 
@@ -46,6 +46,9 @@ sub to_string {
 
   # "path"
   if (my $path = $self->path) { $cookie .= "; path=$path" }
+
+  # "samesite"
+  if (my $samesite = $self->samesite) { $cookie .= "; SameSite=$samesite" }
 
   # "secure"
   $cookie .= "; secure" if $self->secure;
