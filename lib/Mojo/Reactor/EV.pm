@@ -44,9 +44,9 @@ sub watch {
     my $cb = sub {
       my ($w, $revents) = @_;
       $self->_try('I/O watcher', $self->{io}{$fd}{cb}, 0)
-        if EV::READ & $revents;
+        if EV::READ & $revents && $self->{io}{$fd} && $self->{io}{$fd}{cb};
       $self->_try('I/O watcher', $self->{io}{$fd}{cb}, 1)
-        if EV::WRITE & $revents && $self->{io}{$fd};
+        if EV::WRITE & $revents && $self->{io}{$fd} && $self->{io}{$fd}{cb};
     };
     $io->{watcher} = EV::io($fd, $mode, $cb);
   }
